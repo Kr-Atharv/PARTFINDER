@@ -9,13 +9,120 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Domain {
+  industrial
+  electronics
+  automotive
+}
+
+enum Availability {
+  in_stock
+  limited
+  out_of_stock
+  unknown
+}
+
 model UserProfile {
-  id             String   @id @default(uuid())
-  supabaseUserId String   @unique
+  id             String          @id @default(uuid())
+  supabaseUserId String          @unique
   email          String?
   fullName       String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  searchHistory  SearchHistory[]
 
   @@index([supabaseUserId])
+}
+
+model SearchHistory {
+  id            String       @id @default(uuid())
+  userProfileId String?
+  userProfile   UserProfile? @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  query         String
+  domain        Domain?
+  manufacturer  String?
+  category      String?
+  resultsCount  Int          @default(0)
+  createdAt     DateTime     @default(now())
+
+  @@index([userProfileId])
+  @@index([createdAt])
+}
+
+model Part {
+  id                  String              @id @default(uuid())
+  name                String
+  partNumber          String
+  manufacturer        String
+  domain              Domain
+  category            String
+  description         String
+  availability        Availability        @default(unknown)
+  typicalApplications String[]            @default([])
+  keywords            String[]            @default([])
+  isDemo              Boolean             @default(false)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  specs               PartSpecification[]
+  sourceClaims        SpecificationClaim[]
+
+  @@index([domain])
+  @@index([category])
+  @@index([manufacturer])
+  @@index([partNumber])
+  @@index([name])
+}
+
+model PartSpecification {
+  id        String   @id @default(uuid())
+  partId    String
+  part      Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  label     String
+  value     String
+  unit      String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  claims    SpecificationClaim[]
+
+  @@unique([partId, label])
+  @@index([partId])
+  @@index([label])
+}
+
+model SourceRecord {
+  id           String               @id @default(uuid())
+  name         String
+  url          String?
+  retrievedAt  DateTime?            @default(now())
+  isVerified   Boolean              @default(false)
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  claims       SpecificationClaim[]
+
+  @@index([name])
+}
+
+model SpecificationClaim {
+  id             String             @id @default(uuid())
+  partId         String
+  part           Part               @relation(fields: [partId], references: [id], onDelete: Cascade)
+  specId         String?
+  spec           PartSpecification? @relation(fields: [specId], references: [id], onDelete: SetNull)
+  sourceRecordId String
+  sourceRecord   SourceRecord       @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  label          String
+  claimedValue   String
+  unit           String?
+  evidence       String?
+  confidence     Float?
+  createdAt      DateTime           @default(now())
+
+  @@index([partId])
+  @@index([specId])
+  @@index([sourceRecordId])
 }

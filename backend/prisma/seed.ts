@@ -1,11 +1,419 @@
 // prisma/seed.ts
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Domain, Availability } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log("Seeding database...");
-  const dummyProfile = await prisma.userProfile.upsert({
+const sampleParts = [
+  /* ----------------------------- Industrial ----------------------------- */
+  {
+    id: "ind-001",
+    name: "Hydraulic Cylinder Seal Kit",
+    partNumber: "DEMO-NH-SK80",
+    manufacturer: "Northfield Hydraulics",
+    domain: Domain.industrial,
+    category: "Seals & Gaskets",
+    description:
+      "Replacement seal set for double-acting hydraulic cylinders: rod seal, piston seal, wiper and static O-rings.",
+    specs: [
+      { label: "Bore diameter", value: "80 mm", unit: "mm" },
+      { label: "Rod diameter", value: "56 mm", unit: "mm" },
+      { label: "Seal material", value: "Polyurethane / NBR" },
+      { label: "Max pressure", value: "250 bar", unit: "bar" },
+      { label: "Temperature range", value: "-30 to 100 °C", unit: "°C" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-001",
+    usedIn: ["Hydraulic press cylinders", "Material handling lifts"],
+    keywords: ["hydraulic", "seal", "cylinder", "o-ring", "rod seal", "piston seal"],
+    isDemo: true,
+  },
+  {
+    id: "ind-002",
+    name: "Tapered Roller Bearing",
+    partNumber: "DEMO-AB-TR3207",
+    manufacturer: "Alder Bearing Works",
+    domain: Domain.industrial,
+    category: "Bearings",
+    description: "Single-row tapered roller bearing for combined radial and axial loads in gearboxes and axles.",
+    specs: [
+      { label: "Inner diameter", value: "35 mm", unit: "mm" },
+      { label: "Outer diameter", value: "72 mm", unit: "mm" },
+      { label: "Width", value: "28 mm", unit: "mm" },
+      { label: "Cage", value: "Pressed steel" },
+      { label: "Design", value: "Single row, separable" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-002",
+    usedIn: ["Industrial gearboxes", "Conveyor drive shafts"],
+    keywords: ["bearing", "roller", "tapered", "gearbox"],
+    isDemo: true,
+  },
+  {
+    id: "ind-003",
+    name: "Variable Frequency Drive 7.5 kW",
+    partNumber: "DEMO-KD-VF75",
+    manufacturer: "Kestrel Drive Systems",
+    domain: Domain.industrial,
+    category: "Motor Drives",
+    description: "Three-phase variable frequency drive for speed control of induction motors on pumps, fans and conveyors.",
+    specs: [
+      { label: "Rated power", value: "7.5 kW", unit: "kW" },
+      { label: "Input voltage", value: "380-480 V, 3-phase", unit: "V" },
+      { label: "Output current", value: "17 A", unit: "A" },
+      { label: "Enclosure", value: "IP20" },
+      { label: "Communication", value: "Modbus RTU" },
+    ],
+    availability: Availability.limited,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-003",
+    usedIn: ["Pump skids", "Ventilation fans", "Belt conveyors"],
+    keywords: ["vfd", "inverter", "drive", "motor controller", "frequency"],
+    isDemo: true,
+  },
+  {
+    id: "ind-004",
+    name: "External Gear Pump 16 cc/rev",
+    partNumber: "DEMO-NH-GP16",
+    manufacturer: "Northfield Hydraulics",
+    domain: Domain.industrial,
+    category: "Pumps",
+    description: "Fixed-displacement external gear pump for hydraulic power units and mobile machinery.",
+    specs: [
+      { label: "Displacement", value: "16 cc/rev", unit: "cc/rev" },
+      { label: "Max pressure", value: "210 bar", unit: "bar" },
+      { label: "Max speed", value: "3000 rpm", unit: "rpm" },
+      { label: "Mounting", value: "SAE A, 2-bolt" },
+      { label: "Rotation", value: "Clockwise" },
+    ],
+    availability: Availability.out_of_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-004",
+    usedIn: ["Hydraulic power units", "Log splitters"],
+    keywords: ["hydraulic", "pump", "gear pump", "fixed displacement"],
+    isDemo: true,
+  },
+  {
+    id: "ind-005",
+    name: "Synchronous Timing Belt 5M",
+    partNumber: "DEMO-KD-TB5M",
+    manufacturer: "Kestrel Drive Systems",
+    domain: Domain.industrial,
+    category: "Belts & Pulleys",
+    description: "Steel-cord reinforced polyurethane timing belt for precise positioning drives.",
+    specs: [
+      { label: "Profile", value: "5M" },
+      { label: "Pitch", value: "5 mm", unit: "mm" },
+      { label: "Width", value: "15 mm", unit: "mm" },
+      { label: "Length", value: "1500 mm", unit: "mm" },
+      { label: "Material", value: "Polyurethane, steel cord" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-005",
+    usedIn: ["Linear actuators", "Packaging machines"],
+    keywords: ["belt", "timing belt", "synchronous", "pulley"],
+    isDemo: true,
+  },
+  {
+    id: "ind-006",
+    name: "Inductive Proximity Sensor M18",
+    partNumber: "DEMO-MC-PS18",
+    manufacturer: "Meridian Controls",
+    domain: Domain.industrial,
+    category: "Sensors",
+    description: "Cylindrical inductive sensor for non-contact detection of metal targets.",
+    specs: [
+      { label: "Thread", value: "M18" },
+      { label: "Sensing range", value: "8 mm", unit: "mm" },
+      { label: "Output", value: "PNP, normally open" },
+      { label: "Supply voltage", value: "10-30 V DC", unit: "V" },
+      { label: "Protection", value: "IP67" },
+    ],
+    availability: Availability.unknown,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ind-006",
+    usedIn: ["Machine tools", "Assembly lines"],
+    keywords: ["proximity", "sensor", "inductive", "switch"],
+    isDemo: true,
+  },
+
+  /* ----------------------------- Electronics ---------------------------- */
+  {
+    id: "ele-001",
+    name: "3.3 V LDO Voltage Regulator",
+    partNumber: "DEMO-LS-R3300",
+    manufacturer: "Lumen Semiconductor",
+    domain: Domain.electronics,
+    category: "Power Management ICs",
+    description: "Fixed-output low-dropout linear regulator for logic and microcontroller supply rails.",
+    specs: [
+      { label: "Output voltage", value: "3.3 V", unit: "V" },
+      { label: "Max output current", value: "1 A", unit: "A" },
+      { label: "Dropout voltage", value: "1.1 V at 1 A", unit: "V" },
+      { label: "Max input voltage", value: "15 V", unit: "V" },
+      { label: "Package", value: "SOT-223" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-001",
+    usedIn: ["Embedded control boards", "Sensor nodes"],
+    keywords: ["ldo", "voltage regulator", "linear regulator", "regulator", "3v3"],
+    isDemo: true,
+  },
+  {
+    id: "ele-002",
+    name: "Adjustable Buck Converter Module",
+    partNumber: "DEMO-QC-BK3A",
+    manufacturer: "Quarry Components",
+    domain: Domain.electronics,
+    category: "Power Modules",
+    description: "Step-down DC-DC converter module with adjustable output for bench and embedded power supplies.",
+    specs: [
+      { label: "Input voltage", value: "4.5-28 V", unit: "V" },
+      { label: "Output voltage", value: "0.8-20 V, adjustable", unit: "V" },
+      { label: "Output current", value: "3 A", unit: "A" },
+      { label: "Switching frequency", value: "340 kHz", unit: "kHz" },
+      { label: "Mounting", value: "Through-hole pins" },
+    ],
+    availability: Availability.limited,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-002",
+    usedIn: ["Bench power supplies", "Battery-powered devices"],
+    keywords: ["buck", "dc-dc", "step-down", "converter", "voltage regulator", "switching regulator"],
+    isDemo: true,
+  },
+  {
+    id: "ele-003",
+    name: "Aluminium Electrolytic Capacitor 470 µF",
+    partNumber: "DEMO-FE-EC471",
+    manufacturer: "Fenwick Electronics",
+    domain: Domain.electronics,
+    category: "Capacitors",
+    description: "Radial aluminium electrolytic capacitor for bulk decoupling and power-supply filtering.",
+    specs: [
+      { label: "Capacitance", value: "470 µF", unit: "µF" },
+      { label: "Voltage rating", value: "25 V", unit: "V" },
+      { label: "Tolerance", value: "±20 %", unit: "%" },
+      { label: "Size", value: "10 × 16 mm", unit: "mm" },
+      { label: "Temperature rating", value: "105 °C", unit: "°C" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-003",
+    usedIn: ["Power supply boards", "Motor driver boards"],
+    keywords: ["capacitor", "electrolytic", "radial", "filter", "decoupling"],
+    isDemo: true,
+  },
+  {
+    id: "ele-004",
+    name: "USB Type-C Receptacle, 16-pin",
+    partNumber: "DEMO-QC-UC16",
+    manufacturer: "Quarry Components",
+    domain: Domain.electronics,
+    category: "Connectors",
+    description: "Right-angle USB Type-C receptacle for power and USB 2.0 data on compact boards.",
+    specs: [
+      { label: "Type", value: "USB Type-C receptacle" },
+      { label: "Contacts", value: "16" },
+      { label: "Current rating", value: "3 A", unit: "A" },
+      { label: "Orientation", value: "Right angle" },
+      { label: "Mounting", value: "SMT contacts, through-hole shell" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-004",
+    usedIn: ["Portable devices", "Charging boards"],
+    keywords: ["usb", "usb-c", "type-c", "connector", "receptacle", "socket"],
+    isDemo: true,
+  },
+  {
+    id: "ele-005",
+    name: "32-bit Microcontroller, 64 MHz",
+    partNumber: "DEMO-LS-MC64",
+    manufacturer: "Lumen Semiconductor",
+    domain: Domain.electronics,
+    category: "Microcontrollers",
+    description: "General-purpose 32-bit microcontroller with on-chip flash and common serial peripherals.",
+    specs: [
+      { label: "Core", value: "32-bit RISC" },
+      { label: "Clock speed", value: "64 MHz", unit: "MHz" },
+      { label: "Flash memory", value: "256 KB", unit: "KB" },
+      { label: "RAM", value: "64 KB", unit: "KB" },
+      { label: "Supply voltage", value: "1.8-3.6 V", unit: "V" },
+      { label: "Package", value: "LQFP-48" },
+    ],
+    availability: Availability.out_of_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-005",
+    usedIn: ["Motor control", "Industrial IoT gateways"],
+    keywords: ["mcu", "microcontroller", "controller", "32-bit"],
+    isDemo: true,
+  },
+  {
+    id: "ele-006",
+    name: "N-Channel MOSFET 60 V",
+    partNumber: "DEMO-FE-MN60",
+    manufacturer: "Fenwick Electronics",
+    domain: Domain.electronics,
+    category: "Discrete Semiconductors",
+    description: "Logic-level N-channel power MOSFET for switching and motor-drive stages.",
+    specs: [
+      { label: "Drain-source voltage", value: "60 V", unit: "V" },
+      { label: "Continuous drain current", value: "30 A", unit: "A" },
+      { label: "On-resistance", value: "12 mΩ at 10 V gate drive" },
+      { label: "Gate threshold", value: "1-3 V", unit: "V" },
+      { label: "Package", value: "DPAK" },
+    ],
+    availability: Availability.limited,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/ele-006",
+    usedIn: ["Motor driver boards", "DC load switches"],
+    keywords: ["mosfet", "transistor", "n-channel", "power switch"],
+    isDemo: true,
+  },
+
+  /* ------------------------------ Automotive ---------------------------- */
+  {
+    id: "aut-001",
+    name: "Front Brake Pad Set, Ceramic",
+    partNumber: "DEMO-HB-BP2140",
+    manufacturer: "Harbor Brake Co.",
+    domain: Domain.automotive,
+    category: "Brakes",
+    description: "Ceramic friction brake pad set for the front axle, supplied with shims and fitting hardware.",
+    specs: [
+      { label: "Friction material", value: "Ceramic" },
+      { label: "Axle position", value: "Front" },
+      { label: "Pad width", value: "155 mm", unit: "mm" },
+      { label: "Pad thickness", value: "17 mm", unit: "mm" },
+      { label: "Hardware included", value: "Shims and clips" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-001",
+    usedIn: ["Compact sedans", "Small crossovers"],
+    keywords: ["brake", "brake pad", "pads", "friction", "disc brake"],
+    isDemo: true,
+  },
+  {
+    id: "aut-002",
+    name: "Vented Brake Disc 280 mm",
+    partNumber: "DEMO-HB-BD280",
+    manufacturer: "Harbor Brake Co.",
+    domain: Domain.automotive,
+    category: "Brakes",
+    description: "Internally vented brake disc with a protective coating on non-friction surfaces.",
+    specs: [
+      { label: "Diameter", value: "280 mm", unit: "mm" },
+      { label: "Thickness", value: "24 mm", unit: "mm" },
+      { label: "Type", value: "Vented" },
+      { label: "Bolt holes", value: "5" },
+      { label: "Centre bore", value: "66 mm", unit: "mm" },
+    ],
+    availability: Availability.limited,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-002",
+    usedIn: ["Compact sedans", "Small crossovers"],
+    keywords: ["brake disc", "rotor", "vented", "disc"],
+    isDemo: true,
+  },
+  {
+    id: "aut-003",
+    name: "Spin-On Oil Filter",
+    partNumber: "DEMO-RF-OF310",
+    manufacturer: "Redwood Filtration",
+    domain: Domain.automotive,
+    category: "Filters",
+    description: "Full-flow spin-on engine oil filter with anti-drain and bypass valves.",
+    specs: [
+      { label: "Thread", value: "M20 × 1.5" },
+      { label: "Outer diameter", value: "76 mm", unit: "mm" },
+      { label: "Height", value: "100 mm", unit: "mm" },
+      { label: "Bypass valve", value: "Yes" },
+      { label: "Anti-drain valve", value: "Yes" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-003",
+    usedIn: ["Petrol hatchbacks", "Light diesel vans"],
+    keywords: ["oil filter", "filter", "engine oil", "spin-on"],
+    isDemo: true,
+  },
+  {
+    id: "aut-004",
+    name: "Cabin Air Filter, Activated Carbon",
+    partNumber: "DEMO-RF-CF220",
+    manufacturer: "Redwood Filtration",
+    domain: Domain.automotive,
+    category: "Filters",
+    description: "Activated-carbon cabin air filter for passenger-compartment ventilation systems.",
+    specs: [
+      { label: "Type", value: "Activated carbon" },
+      { label: "Length", value: "215 mm", unit: "mm" },
+      { label: "Width", value: "200 mm", unit: "mm" },
+      { label: "Thickness", value: "20 mm", unit: "mm" },
+      { label: "Application", value: "Cabin ventilation" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-004",
+    usedIn: ["Compact sedans", "Small crossovers"],
+    keywords: ["cabin filter", "pollen filter", "air filter", "carbon"],
+    isDemo: true,
+  },
+  {
+    id: "aut-005",
+    name: "Alternator 14 V 120 A",
+    partNumber: "DEMO-TA-AL120",
+    manufacturer: "Tamsin Auto Parts",
+    domain: Domain.automotive,
+    category: "Electrical",
+    description: "Belt-driven alternator with integrated regulator for 12 V vehicle electrical systems.",
+    specs: [
+      { label: "Voltage", value: "14 V", unit: "V" },
+      { label: "Rated output", value: "120 A", unit: "A" },
+      { label: "Pulley", value: "6-rib" },
+      { label: "Rotation", value: "Clockwise" },
+      { label: "Connector", value: "2-pin plug" },
+    ],
+    availability: Availability.unknown,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-005",
+    usedIn: ["Petrol hatchbacks", "Light diesel vans"],
+    keywords: ["alternator", "generator", "charging", "electrical"],
+    isDemo: true,
+  },
+  {
+    id: "aut-006",
+    name: "Iridium Spark Plug",
+    partNumber: "DEMO-TA-SP12",
+    manufacturer: "Tamsin Auto Parts",
+    domain: Domain.automotive,
+    category: "Ignition",
+    description: "Fine-wire iridium centre-electrode spark plug for petrol engines.",
+    specs: [
+      { label: "Thread", value: "M12 × 1.25" },
+      { label: "Reach", value: "19 mm", unit: "mm" },
+      { label: "Hex size", value: "14 mm", unit: "mm" },
+      { label: "Electrode", value: "Iridium" },
+      { label: "Gap", value: "1.0 mm", unit: "mm" },
+    ],
+    availability: Availability.in_stock,
+    sourceName: "Demo catalogue (placeholder)",
+    sourceUrl: "https://example.com/demo-catalogue/aut-006",
+    usedIn: ["Petrol hatchbacks", "Compact sedans"],
+    keywords: ["spark plug", "ignition", "plug", "iridium"],
+    isDemo: true,
+  },
+];
+
+export async function seedDatabase() {
+  console.log("Seeding PartFinder database...");
+
+  // 1. Seed demo user profile
+  await prisma.userProfile.upsert({
     where: { supabaseUserId: "demo-supabase-user-001" },
     update: {},
     create: {
@@ -14,14 +422,104 @@ async function main() {
       fullName: "Demo PartFinder User",
     },
   });
-  console.log("Seeded demo profile:", dummyProfile);
+
+  // 2. Seed placeholder source record
+  const placeholderSource = await prisma.sourceRecord.upsert({
+    where: { id: "source-demo-placeholder" },
+    update: {},
+    create: {
+      id: "source-demo-placeholder",
+      name: "Demo catalogue (placeholder)",
+      url: "https://example.com/demo-catalogue",
+      isVerified: false,
+      metadata: { note: "Illustrative demo catalogue placeholder" },
+    },
+  });
+
+  // 3. Upsert parts and specifications
+  for (const p of sampleParts) {
+    const part = await prisma.part.upsert({
+      where: { id: p.id },
+      update: {
+        name: p.name,
+        partNumber: p.partNumber,
+        manufacturer: p.manufacturer,
+        domain: p.domain,
+        category: p.category,
+        description: p.description,
+        availability: p.availability,
+        typicalApplications: p.usedIn,
+        keywords: p.keywords,
+        isDemo: p.isDemo,
+      },
+      create: {
+        id: p.id,
+        name: p.name,
+        partNumber: p.partNumber,
+        manufacturer: p.manufacturer,
+        domain: p.domain,
+        category: p.category,
+        description: p.description,
+        availability: p.availability,
+        typicalApplications: p.usedIn,
+        keywords: p.keywords,
+        isDemo: p.isDemo,
+      },
+    });
+
+    // Upsert specifications
+    for (const spec of p.specs) {
+      const createdSpec = await prisma.partSpecification.upsert({
+        where: {
+          partId_label: {
+            partId: part.id,
+            label: spec.label,
+          },
+        },
+        update: {
+          value: spec.value,
+          unit: spec.unit || null,
+        },
+        create: {
+          partId: part.id,
+          label: spec.label,
+          value: spec.value,
+          unit: spec.unit || null,
+        },
+      });
+
+      // Claim record linking spec to source
+      const claimId = `claim-${part.id}-${spec.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+      await prisma.specificationClaim.upsert({
+        where: { id: claimId },
+        update: {
+          claimedValue: spec.value,
+          unit: spec.unit || null,
+        },
+        create: {
+          id: claimId,
+          partId: part.id,
+          specId: createdSpec.id,
+          sourceRecordId: placeholderSource.id,
+          label: spec.label,
+          claimedValue: spec.value,
+          unit: spec.unit || null,
+          evidence: "Demo specification sheet claim",
+        },
+      });
+    }
+  }
+
+  console.log(`Successfully seeded ${sampleParts.length} parts with specifications and claims.`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  seedDatabase()
+    .catch((e) => {
+      console.error("Error seeding database:", e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
