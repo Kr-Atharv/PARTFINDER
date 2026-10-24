@@ -7,6 +7,7 @@ import { logger } from "./utils/logger";
 import healthRouter from "./routes/health";
 import authRouter from "./routes/auth";
 import partsRouter from "./routes/parts";
+import compatibilityRouter from "./routes/compatibility";
 import protectedRouter from "./routes/protected";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -44,6 +45,7 @@ app.use((req, _res, next) => {
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/parts", partsRouter);
+app.use("/api/compatibility", compatibilityRouter);
 app.use("/api/protected", protectedRouter);
 
 // Centralized error handling – must be after routes
