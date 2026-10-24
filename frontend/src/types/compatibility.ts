@@ -62,6 +62,10 @@ export interface EvidenceInfo {
   sourceUrl?: string
   /** True when the underlying record is an invented demo record. */
   isDemo: boolean
+  /** The line the source value was read from, when the backend recorded it. */
+  claimEvidence?: string
+  /** ISO timestamp of when the source was read, when recorded. */
+  retrievedAt?: string
 }
 
 export interface FieldAssessment {
@@ -94,10 +98,18 @@ export interface PartAssessment {
   fields: FieldAssessment[]
   counts: StatusCounts
   summary: string
+  /** Which engine produced this assessment. Absent when nothing was assessed. */
+  engine?: AssessmentEngine
 }
+
+export type AssessmentEngine = 'backend' | 'local'
 
 export interface AssessmentReport {
   target: string
+  /** `backend` = every assessed part was checked by POST /api/compatibility/check. */
+  engine: AssessmentEngine | 'mixed'
+  /** Why the local engine was used, when it was (backend unavailable). */
+  fallbackReason?: string
   parts: PartAssessment[]
   /** Number of parts per overall status, derived from `parts`. */
   partTotals: Record<CompatibilityStatus, number> & { notAssessed: number }

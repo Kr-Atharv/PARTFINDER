@@ -21,6 +21,16 @@ export interface SpecMatrixRow {
   cells: SpecMatrixCell[]
   /** Number of parts that do not list this specification. */
   missingCount: number
+  /**
+   * For numeric rows whose values can be compared (same unit family, no ranges): the part(s)
+   * with the highest and lowest value. Absent when the values cannot be compared safely.
+   */
+  extremes?: { highest: string[]; lowest: string[] }
+}
+
+export interface KeyDifference {
+  label: string
+  values: Array<{ partId: string; value: string }>
 }
 
 export interface SpecMatrix {

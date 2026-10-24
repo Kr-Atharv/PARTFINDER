@@ -1,102 +1,203 @@
 import { sampleParts } from '@/data/sampleParts'
-import { matchParts } from '@/lib/search'
-import type { Part, SearchCriteria } from '@/types'
+import { matchParts, matchRefinements, paginate, sortParts } from '@/lib/search'
+import { ApiError, apiFetch } from '@/services/api'
+import type {
+  Part,
+  PartClaim,
+  SearchCriteria,
+  SearchPage,
+  SearchPaging,
+  SearchRefinements,
+} from '@/types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+/* ------------------------------------------------------------------ */
+/* Backend record -> Part                                              */
+/* ------------------------------------------------------------------ */
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value : undefined
 
 /**
- * Search service boundary.
- *
- * Connects to the backend REST API `/api/parts/search`.
- * Falls back safely to local catalogue if the server is offline or unreachable,
- * guaranteeing zero UI regressions during development or testing.
+ * Maps a backend part record onto the frontend Part. Only reshapes what the
+ * backend sent: claims are carried over with their evidence and source, and
+ * nothing is invented. `sourceClaims[].source` (catalogue) and a flat
+ * `sourceUrl` (live research) are both understood.
  */
-export async function searchParts(criteria: SearchCriteria): Promise<Part[]> {
-  try {
-    const params = new URLSearchParams()
-    if (criteria.query) params.set('query', criteria.query)
-    if (criteria.domain) params.set('domain', criteria.domain)
-    if (criteria.manufacturer) params.set('manufacturer', criteria.manufacturer)
-    if (criteria.model) params.set('model', criteria.model)
+export function toPart(raw: any): Part {
+  const claims: PartClaim[] = Array.isArray(raw?.sourceClaims)
+    ? raw.sourceClaims
+        .filter((claim: any) => claim && typeof claim.label === 'string')
+        .map((claim: any) => ({
+          label: claim.label,
+          value: String(claim.claimedValue ?? ''),
+          unit: asString(claim.unit),
+          evidence: asString(claim.evidence),
+          sourceName: asString(claim.source?.name ?? claim.sourceRecord?.name),
+          sourceUrl: asString(claim.source?.url ?? claim.sourceRecord?.url ?? claim.sourceUrl),
+        }))
+    : []
 
-    const url = `${API_BASE_URL}/api/parts/search?${params.toString()}`
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    })
-
-    if (!res.ok) {
-      throw new Error(`Server returned ${res.status}`)
-    }
-
-    const json = await res.json()
-    if (json.data && Array.isArray(json.data.results)) {
-      return json.data.results
-    }
-  } catch (err) {
-    console.warn('Backend search API unavailable, falling back to local demo catalogue:', err)
+  return {
+    id: String(raw.id),
+    name: raw.name ?? '',
+    partNumber: raw.partNumber ?? '',
+    manufacturer: raw.manufacturer ?? '',
+    domain: raw.domain,
+    category: raw.category ?? '',
+    description: raw.description ?? '',
+    specs: Array.isArray(raw.specs)
+      ? raw.specs.map((spec: any) => ({ label: String(spec.label), value: String(spec.value) }))
+      : [],
+    availability: raw.availability ?? 'unknown',
+    source: {
+      name: raw.source?.name ?? 'No source recorded',
+      url: asString(raw.source?.url),
+      retrievedAt: asString(raw.source?.retrievedAt),
+    },
+    usedIn: Array.isArray(raw.usedIn) ? raw.usedIn : [],
+    keywords: Array.isArray(raw.keywords) ? raw.keywords : [],
+    isDemo: Boolean(raw.isDemo),
+    origin: raw.origin === 'research' ? 'research' : 'catalogue',
+    claims: claims.length > 0 ? claims : undefined,
+    price: raw.price ?? undefined,
+    evidenceLevel: raw.evidenceLevel ?? undefined,
+    conflictingSpecs: raw.conflictingSpecs ?? undefined,
   }
+}
 
-  // Graceful fallback to preserve offline functionality
-  return matchParts(sampleParts, criteria)
+/* ------------------------------------------------------------------ */
+/* Search                                                              */
+/* ------------------------------------------------------------------ */
+
+export function buildSearchQuery(
+  criteria: SearchCriteria,
+  refinements: SearchRefinements,
+  paging: SearchPaging,
+): URLSearchParams {
+  const params = new URLSearchParams()
+  if (criteria.query.trim()) params.set('query', criteria.query.trim())
+  if (criteria.domain) params.set('domain', criteria.domain)
+  if (criteria.manufacturer.trim()) params.set('manufacturer', criteria.manufacturer.trim())
+  if (criteria.model.trim()) params.set('model', criteria.model.trim())
+  if (refinements.category.trim()) params.set('category', refinements.category.trim())
+  if (refinements.availability) params.set('availability', refinements.availability)
+  if (refinements.specLabel.trim()) params.set('specLabel', refinements.specLabel.trim())
+  if (refinements.specValue.trim()) params.set('specValue', refinements.specValue.trim())
+  params.set('page', String(paging.page))
+  params.set('limit', String(paging.pageSize))
+  params.set('sort', paging.sort)
+  return params
+}
+
+/** Demo-catalogue search with the same semantics as the backend. Used only when the backend is unavailable. */
+export function searchDemoCatalogue(
+  criteria: SearchCriteria,
+  refinements: SearchRefinements,
+  paging: SearchPaging,
+  demoReason: string,
+): SearchPage {
+  const matched = sortParts(matchRefinements(matchParts(sampleParts, criteria), refinements), paging.sort)
+  const slice = paginate(matched, paging)
+  return {
+    results: slice.items,
+    total: slice.total,
+    page: slice.page,
+    pageSize: paging.pageSize,
+    totalPages: slice.totalPages,
+    source: 'demo',
+    demoReason,
+  }
 }
 
 /**
- * Synchronous part finder preserving immediate synchronous callers.
+ * One page of catalogue results from the backend (filtering, sorting and paging all happen
+ * server-side). Only when the backend itself is unavailable does it fall back to the demo
+ * catalogue, and the result is then labelled `source: 'demo'`. A request the backend
+ * rejects (4xx) is an error, never silently replaced by demo data.
  */
+export async function searchPartsPage(
+  criteria: SearchCriteria,
+  refinements: SearchRefinements,
+  paging: SearchPaging,
+  signal?: AbortSignal,
+): Promise<SearchPage> {
+  try {
+    const data = await apiFetch<any>(`/api/parts/search?${buildSearchQuery(criteria, refinements, paging)}`, {
+      signal,
+    })
+    if (!data || !Array.isArray(data.results)) {
+      throw new ApiError('The server sent a search response in an unexpected shape.', 200, 'BAD_RESPONSE')
+    }
+    return {
+      results: data.results.map(toPart),
+      total: Number(data.total ?? data.results.length),
+      page: Number(data.page ?? paging.page),
+      pageSize: Number(data.limit ?? paging.pageSize),
+      totalPages: Number(data.totalPages ?? 1),
+      source: 'backend',
+      truncated: Boolean(data.truncated),
+    }
+  } catch (error) {
+    if (error instanceof ApiError && error.isUnavailable && error.code !== 'ABORTED') {
+      return searchDemoCatalogue(criteria, refinements, paging, error.message)
+    }
+    throw error
+  }
+}
+
+/** Legacy helper: all results of the first page. Kept for callers that only need a list. */
+export async function searchParts(criteria: SearchCriteria): Promise<Part[]> {
+  const page = await searchPartsPage(
+    criteria,
+    { category: '', availability: '', specLabel: '', specValue: '' },
+    { page: 1, pageSize: 100, sort: 'name-asc' },
+  )
+  return page.results
+}
+
+/* ------------------------------------------------------------------ */
+/* Single parts                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Synchronous lookup in the demo catalogue only. */
 export function getPartById(id: string): Part | undefined {
   return sampleParts.find((part) => part.id === id)
 }
 
 /**
- * Asynchronous part fetcher from backend `/api/parts/:id`.
+ * Fetches one part from the backend. Returns `null` when the backend says it does not exist,
+ * and throws ApiError for any other failure (no silent fallback).
  */
-export async function fetchPartById(id: string): Promise<Part | undefined> {
+export async function fetchPartByIdStrict(id: string, signal?: AbortSignal): Promise<Part | null> {
   try {
-    const url = `${API_BASE_URL}/api/parts/${encodeURIComponent(id)}`
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    })
-
-    if (res.ok) {
-      const json = await res.json()
-      if (json.data) {
-        return json.data
-      }
-    }
-  } catch (err) {
-    console.warn(`Backend getPartById(${id}) failed, falling back to local catalogue:`, err)
+    const raw = await apiFetch<any>(`/api/parts/${encodeURIComponent(id)}`, { signal })
+    return raw ? toPart(raw) : null
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
   }
-
-  return getPartById(id)
 }
 
-/**
- * Fetch multiple parts for comparison from `/api/parts/compare?ids=...`
- */
+/** Backend part, falling back to the demo catalogue only when the backend is unavailable. */
+export async function fetchPartById(id: string): Promise<Part | undefined> {
+  try {
+    return (await fetchPartByIdStrict(id)) ?? undefined
+  } catch (error) {
+    if (error instanceof ApiError && error.isUnavailable) return getPartById(id)
+    throw error
+  }
+}
+
+/** Fetch multiple parts for comparison from `/api/parts/compare?ids=...`. */
 export async function fetchPartsForCompare(ids: string[]): Promise<Part[]> {
   if (ids.length === 0) return []
-
   try {
-    const url = `${API_BASE_URL}/api/parts/compare?ids=${encodeURIComponent(ids.join(','))}`
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    })
-
-    if (res.ok) {
-      const json = await res.json()
-      if (Array.isArray(json.data)) {
-        return json.data
-      }
+    const data = await apiFetch<any[]>(`/api/parts/compare?ids=${encodeURIComponent(ids.join(','))}`)
+    return Array.isArray(data) ? data.map(toPart) : []
+  } catch (error) {
+    if (error instanceof ApiError && error.isUnavailable) {
+      return sampleParts.filter((part) => ids.includes(part.id))
     }
-  } catch (err) {
-    console.warn('Backend compare API unavailable, falling back to local catalogue:', err)
+    throw error
   }
-
-  return sampleParts.filter((p) => ids.includes(p.id))
 }

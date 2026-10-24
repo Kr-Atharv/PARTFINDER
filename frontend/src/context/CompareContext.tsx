@@ -1,8 +1,22 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Part } from '@/types'
 
 export const MAX_COMPARE_ITEMS = 4
+const STORAGE_KEY = 'partfinder_compare_items'
+
+function loadInitialItems(): Part[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.slice(0, MAX_COMPARE_ITEMS)
+    }
+  } catch {
+    // ignore
+  }
+  return []
+}
 
 interface CompareContextValue {
   items: Part[]
@@ -13,16 +27,22 @@ interface CompareContextValue {
   toggle: (part: Part) => void
   remove: (partId: string) => void
   clear: () => void
+  /** Replaces the whole selection (used to reopen a past comparison). */
+  replace: (parts: Part[]) => void
 }
 
 const CompareContext = createContext<CompareContextValue | null>(null)
 
-/**
- * Holds the parts selected for comparison. Stored in memory (React state) so
- * the selection survives navigation between pages; it resets on a full reload.
- */
 export function CompareProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<Part[]>([])
+  const [items, setItems] = useState<Part[]>(loadInitialItems)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+    } catch {
+      // ignore
+    }
+  }, [items])
 
   const has = useCallback((partId: string) => items.some((p) => p.id === partId), [items])
 
@@ -38,7 +58,18 @@ export function CompareProvider({ children }: { children: ReactNode }) {
     setItems((prev) => prev.filter((p) => p.id !== partId))
   }, [])
 
-  const clear = useCallback(() => setItems([]), [])
+  const clear = useCallback(() => {
+    setItems([])
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const replace = useCallback((parts: Part[]) => {
+    setItems(parts.slice(0, MAX_COMPARE_ITEMS))
+  }, [])
 
   const value = useMemo<CompareContextValue>(
     () => ({
@@ -50,8 +81,9 @@ export function CompareProvider({ children }: { children: ReactNode }) {
       toggle,
       remove,
       clear,
+      replace,
     }),
-    [items, has, toggle, remove, clear],
+    [items, has, toggle, remove, clear, replace],
   )
 
   return <CompareContext.Provider value={value}>{children}</CompareContext.Provider>

@@ -1,8 +1,54 @@
+import { isKnownUnit, nearlyEqual, parseQuantity, toBase } from '@/lib/quantity'
 import type { Part } from '@/types'
-import type { SpecMatrix, SpecMatrixRow, SpecRowStatus } from '@/types/comparison'
+import type { KeyDifference, SpecMatrix, SpecMatrixRow, SpecRowStatus } from '@/types/comparison'
 
 const labelKey = (label: string) => label.trim().toLowerCase().replace(/\s+/g, ' ')
 const valueKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '')
+
+/**
+ * Finds the highest and lowest value of a row when, and only when, they can be compared
+ * safely: every listed value is a single number, all share one unit family (converted via the
+ * known unit table) or are all unitless, and they are not all equal. Otherwise returns undefined
+ * and no highlight is shown - nothing is guessed.
+ */
+export function numericExtremes(
+  cells: Array<{ partId: string; value: string }>,
+): { highest: string[]; lowest: string[] } | undefined {
+  if (cells.length < 2) return undefined
+  const parsed = cells.map((cell) => ({ cell, quantity: parseQuantity(cell.value) }))
+  if (parsed.some((entry) => !entry.quantity || entry.quantity.isRange)) return undefined
+
+  const units = parsed.map((entry) => entry.quantity!.unit)
+  const unitless = units.every((unit) => unit === '')
+  if (!unitless && units.some((unit) => unit === '' || !isKnownUnit(unit))) return undefined
+
+  const reference = units[0]
+  const values: Array<{ partId: string; value: number }> = []
+  for (const entry of parsed) {
+    const q = entry.quantity!
+    const base = unitless ? q.min : toBase(q.min, q.unit, reference)
+    if (base === null) return undefined
+    values.push({ partId: entry.cell.partId, value: base })
+  }
+  const max = Math.max(...values.map((v) => v.value))
+  const min = Math.min(...values.map((v) => v.value))
+  if (nearlyEqual(max, min)) return undefined
+  return {
+    highest: values.filter((v) => nearlyEqual(v.value, max)).map((v) => v.partId),
+    lowest: values.filter((v) => nearlyEqual(v.value, min)).map((v) => v.partId),
+  }
+}
+
+/** The rows where listed values genuinely differ, for a short "what's different" summary. */
+export function keyDifferences(matrix: SpecMatrix, limit = 6): KeyDifference[] {
+  return matrix.rows
+    .filter((row) => row.status === 'differs')
+    .slice(0, limit)
+    .map((row) => ({
+      label: row.label,
+      values: row.cells.filter((cell) => cell.value !== null).map((cell) => ({ partId: cell.partId, value: cell.value as string })),
+    }))
+}
 
 /**
  * Lines up the specifications of the selected parts by label.
@@ -44,7 +90,8 @@ export function buildSpecMatrix(parts: Part[]): SpecMatrix {
     if (distinct.size > 1) status = 'differs'
     else if (missingCount > 0) status = 'gap'
     else status = 'same'
-    return { label: labels.get(key) ?? key, status, cells, missingCount }
+    const extremes = status === 'differs' ? numericExtremes(present) : undefined
+    return { label: labels.get(key) ?? key, status, cells, missingCount, extremes }
   })
 
   const sharedCount = (row: SpecMatrixRow) => row.cells.length - row.missingCount

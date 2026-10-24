@@ -8,14 +8,17 @@ import { SpecComparisonTable } from '@/components/compare/SpecComparisonTable'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { KeyDifferences } from '@/components/compare/KeyDifferences'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { PageHeading } from '@/components/ui/PageHeading'
 import { useCompare } from '@/context/CompareContext'
 import { configuredFields, validateRequirements } from '@/lib/compatibility'
-import { buildSpecMatrix } from '@/lib/specMatrix'
+import { buildSpecMatrix, keyDifferences } from '@/lib/specMatrix'
+import { describeError, isAbort } from '@/services/api'
 import { assessCompatibility } from '@/services/compatibilityService'
 import { requirementsActions, useRequirements } from '@/state/requirementsStore'
+import { userData } from '@/state/userData'
 import type { AssessmentReport, FieldErrors } from '@/types/compatibility'
 
 type AssessmentState =
@@ -23,6 +26,27 @@ type AssessmentState =
   | { phase: 'loading'; report?: AssessmentReport }
   | { phase: 'ready'; report: AssessmentReport }
   | { phase: 'error'; message: string }
+
+function EngineBanner({ report }: { report: AssessmentReport }) {
+  if (!report.parts.some((entry) => entry.assessed)) return null
+  if (report.engine === 'backend') {
+    return (
+      <Alert tone="info" title="Checked by the PartFinder server">
+        Every assessed part was checked by the server’s compatibility engine against the specifications and sources
+        recorded for it. Values missing from a record are shown as Unverified, never as a pass.
+      </Alert>
+    )
+  }
+  return (
+    <Alert tone="warning" title="Fallback engine used: server unavailable">
+      {report.engine === 'mixed'
+        ? 'Some parts were checked by the server and others by the simpler rules built into this page.'
+        : 'These results come from the simpler rules built into this page, not from the server.'}{' '}
+      {report.fallbackReason ? `Reason: ${report.fallbackReason} ` : ''}
+      Try again once the server is reachable for the server-checked verdict.
+    </Alert>
+  )
+}
 
 export default function ComparePartsPage() {
   const { items, count, max, remove, clear } = useCompare()
@@ -39,7 +63,17 @@ export default function ComparePartsPage() {
   const visibleRows = onlyDifferences ? matrix.rows.filter((row) => row.status !== 'same') : matrix.rows
   const differingCount = matrix.rows.filter((row) => row.status === 'differs').length
   const gapCount = matrix.rows.filter((row) => row.status === 'gap').length
+  const differences = useMemo(() => keyDifferences(matrix), [matrix])
+  const anyDemo = items.some((part) => part.isDemo)
   const dirty = JSON.stringify(draft) !== JSON.stringify(applied)
+
+  // Remember this comparison once it has been on screen for a moment (2+ parts), so passing
+  // clicks do not fill the history.
+  useEffect(() => {
+    if (items.length < 2) return
+    const timer = window.setTimeout(() => userData.recordComparison(items), 1500)
+    return () => window.clearTimeout(timer)
+  }, [items])
 
   // Run the assessment whenever the selection or the applied requirements change.
   useEffect(() => {
@@ -48,20 +82,22 @@ export default function ComparePartsPage() {
       return
     }
     let cancelled = false
+    const controller = new AbortController()
     setAssessment((prev) =>
       prev.phase === 'ready' ? { phase: 'loading', report: prev.report } : prev.phase === 'loading' ? prev : { phase: 'loading' },
     )
-    assessCompatibility(items, applied)
+    assessCompatibility(items, applied, controller.signal)
       .then((report) => {
         if (!cancelled) setAssessment({ phase: 'ready', report })
       })
       .catch((error: unknown) => {
         if (cancelled) return
-        const message = error instanceof Error ? error.message : 'The assessment could not be completed.'
-        setAssessment({ phase: 'error', message })
+        if (isAbort(error)) return
+        setAssessment({ phase: 'error', message: describeError(error, 'The assessment could not be completed').message })
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [items, applied, runId])
 
@@ -126,11 +162,14 @@ export default function ComparePartsPage() {
         />
       ) : (
         <>
-          <Alert tone="warning" title="Illustrative demo data, not a verified assessment">
-            Every value on this page comes from the built-in demo catalogue. Manufacturers, part numbers,
-            specifications and sources are invented and have not been verified against any real product.
-            Results come from simple local rules; no live source, backend or API is connected.
-          </Alert>
+          {anyDemo && (
+            <Alert tone="warning" title="Includes illustrative demo data">
+              {items.filter((part) => part.isDemo).map((part) => part.name).join(', ')}{' '}
+              {items.filter((part) => part.isDemo).length === 1 ? 'comes' : 'come'} from the built-in demo
+              catalogue. Its manufacturers, part numbers, specifications and sources are invented and have not been
+              verified against any real product. Demo parts are labelled “Demo data” throughout.
+            </Alert>
+          )}
 
           {count === 1 && (
             <Alert
@@ -178,6 +217,8 @@ export default function ComparePartsPage() {
             <SpecComparisonTable parts={items} rows={visibleRows} onRemove={remove} />
           </section>
 
+          <KeyDifferences parts={items} differences={differences} />
+
           <section aria-labelledby="requirements-heading" className="space-y-3">
             <h2 id="requirements-heading" className="sr-only">
               Target requirements
@@ -217,6 +258,8 @@ export default function ComparePartsPage() {
             <Alert tone="warning" title="Not an installation guarantee">
               {SAFETY_WARNING}
             </Alert>
+
+            {report && <EngineBanner report={report} />}
 
             {assessment.phase === 'idle' && (
               <EmptyState

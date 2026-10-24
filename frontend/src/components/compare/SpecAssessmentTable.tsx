@@ -32,7 +32,7 @@ export function SpecAssessmentTable({ parts, report }: SpecAssessmentTableProps)
       role="region"
       aria-label="Required versus discovered specifications. Scroll horizontally on small screens."
       tabIndex={0}
-      className="overflow-x-auto rounded-lg border border-line bg-white shadow-card"
+      className="overflow-x-auto rounded-lg border border-line bg-surface shadow-card"
     >
       <table className="w-full min-w-max border-collapse text-left text-sm">
         <caption className="sr-only">Required values compared with values found in each part record</caption>
@@ -56,7 +56,7 @@ export function SpecAssessmentTable({ parts, report }: SpecAssessmentTableProps)
         <tbody className="divide-y divide-line">
           {rows.map(({ fieldId, sample }) => (
             <tr key={fieldId}>
-              <th scope="row" className="sticky left-0 z-10 bg-white px-4 py-3 align-top font-normal text-ink-800">
+              <th scope="row" className="sticky left-0 z-10 bg-surface px-4 py-3 align-top font-normal text-ink-800">
                 <span className="block font-medium">{sample.label}</span>
                 {sample.unit && <span className="block text-xs text-ink-500">Unit: {sample.unit}</span>}
               </th>

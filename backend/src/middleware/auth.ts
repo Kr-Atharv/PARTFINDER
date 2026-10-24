@@ -15,28 +15,27 @@ export interface SupabaseUser {
 let JWKS: any = null;
 function getJWKS() {
   if (!JWKS) {
-    const jwksUrl = `${config.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
+    const jwksUrl = config.SUPABASE_JWKS_URL || `${config.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
     JWKS = createRemoteJWKSet(new URL(jwksUrl));
   }
   return JWKS;
 }
 
-/**
- * Verify Supabase JWT either via static secret (if SUPABASE_JWT_SECRET is set)
- * or via JWKS remote verification.
- */
-export async function verifySupabaseToken(token: string): Promise<SupabaseUser> {
-  try {
-    if (config.SUPABASE_JWT_SECRET) {
-      const { payload } = await jwtVerify(token, new TextEncoder().encode(config.SUPABASE_JWT_SECRET));
+export const authService = {
+  getJWKS,
+  async verifySupabaseToken(token: string): Promise<SupabaseUser> {
+    try {
+      const { payload } = await jwtVerify(token, authService.getJWKS());
       return payload as SupabaseUser;
+    } catch (err) {
+      logger.warn(`JWT verification failed: ${(err as Error).message}`);
+      throw Object.assign(new Error("Invalid or expired token"), { status: 401, code: "AUTH_INVALID_TOKEN" });
     }
-    const { payload } = await jwtVerify(token, getJWKS());
-    return payload as SupabaseUser;
-  } catch (err) {
-    logger.warn(`JWT verification failed: ${(err as Error).message}`);
-    throw Object.assign(new Error("Invalid or expired token"), { status: 401, code: "AUTH_INVALID_TOKEN" });
-  }
+  },
+};
+
+export function verifySupabaseToken(token: string): Promise<SupabaseUser> {
+  return authService.verifySupabaseToken(token);
 }
 
 /**
@@ -59,7 +58,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const user = await verifySupabaseToken(token);
+    const user = await authService.verifySupabaseToken(token);
     (req as any).user = user;
     next();
   } catch (err: any) {

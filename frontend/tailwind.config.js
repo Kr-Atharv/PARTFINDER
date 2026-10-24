@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+const channel = (name) => `rgb(var(--${name}) / <alpha-value>)`
+
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -7,36 +10,60 @@ export default {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
+      // Colours are CSS variables (see index.css) so light and dark share one set of class names.
       colors: {
         ink: {
-          900: '#0f1c2e',
-          800: '#16263d',
-          700: '#243652',
-          600: '#3b4d68',
-          500: '#5a6b84',
-          400: '#8593a8',
+          900: channel('ink-900'),
+          800: channel('ink-800'),
+          700: channel('ink-700'),
+          600: channel('ink-600'),
+          500: channel('ink-500'),
+          400: channel('ink-400'),
         },
         surface: {
-          DEFAULT: '#ffffff',
-          muted: '#f6f8fa',
-          subtle: '#eef1f5',
+          DEFAULT: channel('surface'),
+          muted: channel('surface-muted'),
+          subtle: channel('surface-subtle'),
         },
         line: {
-          DEFAULT: '#e2e7ee',
-          strong: '#cdd5df',
+          DEFAULT: channel('line'),
+          strong: channel('line-strong'),
         },
         brand: {
-          50: '#effaf8',
-          100: '#d3f3ee',
-          200: '#a8e6dd',
-          500: '#0f9d92',
-          600: '#0b857b',
-          700: '#0a6b63',
+          50: channel('brand-50'),
+          100: channel('brand-100'),
+          200: channel('brand-200'),
+          500: channel('brand-500'),
+          600: channel('brand-600'),
+          700: channel('brand-700'),
+        },
+        // `accent-*` was referenced by the login page, header avatar and research panel but never
+        // defined, so those elements rendered unstyled. It is now an alias of the brand scale.
+        accent: {
+          50: channel('brand-50'),
+          100: channel('brand-100'),
+          200: channel('brand-200'),
+          300: channel('brand-200'),
+          500: channel('brand-500'),
+          600: channel('brand-600'),
+          700: channel('brand-700'),
+          800: channel('brand-700'),
         },
       },
       boxShadow: {
-        card: '0 1px 2px rgba(15, 28, 46, 0.04), 0 1px 1px rgba(15, 28, 46, 0.03)',
-        pop: '0 4px 12px rgba(15, 28, 46, 0.08)',
+        card: '0 1px 2px rgb(var(--shadow) / 0.05), 0 1px 1px rgb(var(--shadow) / 0.04)',
+        pop: '0 4px 12px rgb(var(--shadow) / 0.10)',
+        drawer: '-8px 0 24px rgb(var(--shadow) / 0.18)',
+      },
+      keyframes: {
+        'slide-in-right': { from: { transform: 'translateX(100%)' }, to: { transform: 'translateX(0)' } },
+        'slide-up': { from: { transform: 'translateY(8px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: {
+        'slide-in-right': 'slide-in-right 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+        'slide-up': 'slide-up 180ms ease-out',
+        'fade-in': 'fade-in 150ms ease-out',
       },
     },
   },

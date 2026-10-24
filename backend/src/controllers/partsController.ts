@@ -1,7 +1,8 @@
 // src/controllers/partsController.ts
 import { Request, Response, NextFunction } from "express";
 import { PartsService } from "../services/partsService";
-import { prisma } from "../services/db";
+import { supabaseAdmin } from "../services/supabaseService";
+import crypto from "crypto";
 
 export class PartsController {
   static async search(req: Request, res: Response, next: NextFunction) {
@@ -13,23 +14,24 @@ export class PartsController {
       if (query.query && query.query.trim()) {
         try {
           const user = (req as any).user;
-          let userProfileId: string | undefined = undefined;
+          let userProfileId: string | null = null;
           if (user?.sub) {
-            const profile = await prisma.userProfile.findUnique({
-              where: { supabaseUserId: user.sub },
-            });
-            userProfileId = profile?.id;
+            const { data: profile } = await supabaseAdmin
+              .from("UserProfile")
+              .select("id")
+              .eq("supabaseUserId", user.sub)
+              .maybeSingle();
+            userProfileId = profile?.id || null;
           }
 
-          await prisma.searchHistory.create({
-            data: {
-              query: query.query.trim(),
-              domain: query.domain || null,
-              manufacturer: query.manufacturer || null,
-              category: query.category || null,
-              resultsCount: data.total,
-              userProfileId: userProfileId || null,
-            },
+          await supabaseAdmin.from("SearchHistory").insert({
+            id: crypto.randomUUID(),
+            query: query.query.trim(),
+            domain: query.domain || null,
+            manufacturer: query.manufacturer || null,
+            category: query.category || null,
+            resultsCount: data.total,
+            userProfileId,
           });
         } catch {
           // Non-blocking history write
@@ -39,6 +41,34 @@ export class PartsController {
       return res.json({
         data,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async suggest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { q, limit } = req.query as unknown as { q: string; limit: number };
+      const data = await PartsService.suggest(q, limit);
+      return res.json({ data });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async facets(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await PartsService.facets();
+      return res.json({ data });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async popular(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await PartsService.popularSearches();
+      return res.json({ data });
     } catch (err) {
       next(err);
     }

@@ -1,155 +1,106 @@
-import { FilterX, SearchX } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { FilterX, Globe, SearchX } from 'lucide-react'
 import { PartCard } from '@/components/parts/PartCard'
-import { availabilityMeta } from '@/components/parts/AvailabilityBadge'
+import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Select } from '@/components/ui/Select'
-import type { SelectOption } from '@/components/ui/Select'
-import {
-  availabilityOrder,
-  emptyFilters,
-  filterParts,
-  hasActiveFilters,
-  sortParts,
-  uniqueSorted,
-} from '@/lib/search'
-import type { Availability, Part, ResultFilters, SearchCriteria, SortKey } from '@/types'
+import { Pagination } from '@/components/ui/Pagination'
+import type { SearchCriteria, SearchPage } from '@/types'
 
-const SORT_OPTIONS: Array<SelectOption & { value: SortKey }> = [
-  { value: 'name-asc', label: 'Part name (A to Z)' },
-  { value: 'name-desc', label: 'Part name (Z to A)' },
-  { value: 'manufacturer-asc', label: 'Manufacturer (A to Z)' },
-  { value: 'manufacturer-desc', label: 'Manufacturer (Z to A)' },
-]
+/** "1–20 of 134" style range for the current page. Exported for tests. */
+export function resultRange(page: Pick<SearchPage, 'page' | 'pageSize' | 'total' | 'results'>) {
+  if (page.total === 0 || page.results.length === 0) return { from: 0, to: 0 }
+  const from = (page.page - 1) * page.pageSize + 1
+  return { from, to: from + page.results.length - 1 }
+}
 
 interface ResultsPanelProps {
-  results: Part[]
+  page: SearchPage
   criteria: SearchCriteria
+  filtersActive: boolean
+  onPage: (page: number) => void
+  onClearFilters: () => void
+  /** Switch to the live supplier research tab with the current query. */
+  onResearch: () => void
 }
 
 /**
- * Filters and sorts a result set. Mount it with a `key` that changes per
- * search so filter and sort state resets for every new search.
+ * Presentational list of one server-side page of results. Filtering, sorting and paging
+ * happen on the server (or, labelled as demo, in the demo catalogue); nothing is re-filtered here.
  */
-export function ResultsPanel({ results, criteria }: ResultsPanelProps) {
-  const [filters, setFilters] = useState<ResultFilters>(emptyFilters)
-  const [sort, setSort] = useState<SortKey>('name-asc')
-
-  const manufacturerOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'All manufacturers' },
-      ...uniqueSorted(results.map((p) => p.manufacturer)).map((m) => ({ value: m, label: m })),
-    ],
-    [results],
-  )
-  const categoryOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'All categories' },
-      ...uniqueSorted(results.map((p) => p.category)).map((c) => ({ value: c, label: c })),
-    ],
-    [results],
-  )
-  const availabilityOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: '', label: 'Any availability' },
-      ...availabilityOrder
-        .filter((a) => results.some((p) => p.availability === a))
-        .map((a) => ({ value: a, label: availabilityMeta[a].label })),
-    ],
-    [results],
-  )
-
-  const visible = useMemo(() => sortParts(filterParts(results, filters), sort), [results, filters, sort])
-  const filtersActive = hasActiveFilters(filters)
-
-  if (results.length === 0) {
-    return (
-      <EmptyState
-        icon={SearchX}
-        title="No parts found"
-        description={`Nothing in the demo catalogue matches “${criteria.query}”${
-          criteria.domain ? ` in ${criteria.domain}` : ''
-        }. Check the spelling, use fewer words, or remove the manufacturer, model or domain restriction.`}
-      />
-    )
-  }
+export function ResultsPanel({ page, criteria, filtersActive, onPage, onClearFilters, onResearch }: ResultsPanelProps) {
+  const { from, to } = resultRange(page)
+  const isDemo = page.source === 'demo'
+  const summary = criteria.query ? (
+    <>
+      for <span className="font-medium text-ink-900">“{criteria.query}”</span>
+    </>
+  ) : null
 
   return (
     <section aria-label="Search results" className="space-y-4">
-      <Card>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Select
-            label="Manufacturer"
-            value={filters.manufacturer}
-            options={manufacturerOptions}
-            onChange={(e) => setFilters({ ...filters, manufacturer: e.target.value })}
-          />
-          <Select
-            label="Category"
-            value={filters.category}
-            options={categoryOptions}
-            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-          />
-          <Select
-            label="Availability (demo)"
-            value={filters.availability}
-            options={availabilityOptions}
-            onChange={(e) =>
-              setFilters({ ...filters, availability: e.target.value as Availability | '' })
-            }
-          />
-          <Select
-            label="Sort by"
-            value={sort}
-            options={SORT_OPTIONS}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-          />
-        </div>
-      </Card>
+      {isDemo && (
+        <Alert tone="warning" title="Showing the demo catalogue, not live data">
+          The PartFinder server could not be reached ({page.demoReason ?? 'no response'}), so these results come from a small
+          built-in demo catalogue of invented parts. Do not rely on them.
+        </Alert>
+      )}
+      {page.truncated && (
+        <Alert tone="warning" title="Specification filter scanned only part of the catalogue">
+          The server checks specifications on a limited number of records, so the total below may be incomplete. Add a query or
+          another filter to narrow it down.
+        </Alert>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-600" aria-live="polite">
-          Showing <span className="font-semibold text-ink-900">{visible.length}</span> of{' '}
-          {results.length} {results.length === 1 ? 'result' : 'results'} for{' '}
-          <span className="font-medium text-ink-900">“{criteria.query}”</span>
-        </p>
-        <div className="flex items-center gap-2">
-          <Badge tone="warning">Demo data</Badge>
-          {filtersActive && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<FilterX className="h-4 w-4" aria-hidden="true" />}
-              onClick={() => setFilters(emptyFilters)}
-            >
-              Clear filters
-            </Button>
+          {page.total === 0 ? (
+            <>No results {summary}</>
+          ) : (
+            <>
+              Showing <span className="font-semibold text-ink-900">{from}–{to}</span> of{' '}
+              <span className="font-semibold text-ink-900">{page.total}</span> {page.total === 1 ? 'result' : 'results'} {summary}
+            </>
           )}
-        </div>
+        </p>
+        {isDemo ? <Badge tone="warning">Demo data</Badge> : <Badge tone="success" dot>Live catalogue</Badge>}
       </div>
 
-      {visible.length === 0 ? (
+      {page.total === 0 ? (
         <EmptyState
-          icon={FilterX}
-          title="No results match these filters"
-          description="Your search found parts, but none match the current manufacturer, category or availability filters."
+          icon={filtersActive ? FilterX : SearchX}
+          title="No parts found"
+          description={
+            filtersActive
+              ? 'Nothing matches the search together with the current filters. Remove a filter or widen the search.'
+              : `Nothing in the ${isDemo ? 'demo ' : ''}catalogue matches this search. Check the spelling, use fewer words, or remove the manufacturer, model or domain restriction.`
+          }
           action={
-            <Button variant="secondary" onClick={() => setFilters(emptyFilters)}>
-              Clear filters
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              {filtersActive && (
+                <Button variant="secondary" icon={<FilterX className="h-4 w-4" aria-hidden="true" />} onClick={onClearFilters}>
+                  Clear filters
+                </Button>
+              )}
+              {!isDemo && criteria.query && (
+                <Button icon={<Globe className="h-4 w-4" aria-hidden="true" />} onClick={onResearch}>
+                  Research suppliers on the web
+                </Button>
+              )}
+            </div>
           }
         />
       ) : (
-        <ul className="space-y-4">
-          {visible.map((part) => (
-            <li key={part.id}>
-              <PartCard part={part} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-4">
+            {page.results.map((part) => (
+              <li key={part.id}>
+                <PartCard part={part} />
+              </li>
+            ))}
+          </ul>
+          <Pagination page={page.page} totalPages={page.totalPages} onPage={onPage} label="Search results pages" className="pt-2" />
+        </>
       )}
     </section>
   )

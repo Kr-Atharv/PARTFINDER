@@ -1,6 +1,6 @@
 // src/controllers/authController.ts
 import { Request, Response, NextFunction } from "express";
-import { supabaseClient } from "../services/supabaseService";
+import { supabaseClient, supabaseAdmin } from "../services/supabaseService";
 import { UserService } from "../services/userService";
 import { config } from "../config";
 import { logger } from "../utils/logger";
@@ -25,47 +25,70 @@ export class AuthController {
   static async signUp(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password, fullName } = req.body;
-      const { data, error } = await supabaseClient.auth.signUp({
+
+      // Create pre-confirmed user via admin API to avoid email rate limits and confirmation delays
+      const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName,
         },
       });
 
-      if (error) {
-        return res.status(400).json({
-          error: {
-            message: error.message,
-            code: "AUTH_SIGNUP_FAILED",
-          },
-        });
+      let user = createData?.user;
+
+      if (createError) {
+        // If user already exists, attempt to sign in directly
+        if (createError.message.toLowerCase().includes("already registered") || createError.status === 422) {
+          const signInAttempt = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (signInAttempt.error) {
+            return res.status(400).json({
+              error: {
+                message: "An account with this email already exists. Please sign in.",
+                code: "USER_ALREADY_EXISTS",
+              },
+            });
+          }
+          user = signInAttempt.data.user;
+        } else {
+          return res.status(400).json({
+            error: {
+              message: createError.message || "Failed to create account.",
+              code: "AUTH_SIGNUP_FAILED",
+            },
+          });
+        }
       }
 
-      const user = data.user;
       if (!user) {
         return res.status(400).json({
           error: {
-            message: "User registration failed",
+            message: "User registration failed.",
             code: "AUTH_SIGNUP_FAILED",
           },
         });
       }
 
-      // Link to Postgres UserProfile
+      // Link to UserProfile in Supabase
       let profile = null;
       try {
         profile = await UserService.getOrCreateProfile(user.id, user.email, fullName);
       } catch (dbErr: any) {
-        logger.warn(`Could not persist user profile to DB: ${dbErr.message}`);
+        logger.warn(`Could not persist user profile: ${dbErr.message}`);
       }
 
-      // If Supabase returned a session immediately (email confirmation disabled)
-      if (data.session) {
-        res.cookie(config.SESSION_COOKIE_NAME, data.session.access_token, ACCESS_COOKIE_OPTIONS);
-        res.cookie(`${config.SESSION_COOKIE_NAME}_refresh`, data.session.refresh_token, REFRESH_COOKIE_OPTIONS);
+      // Sign in with password to establish session tokens
+      const { data: sessionData } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      const session = sessionData?.session;
+
+      if (session) {
+        res.cookie(config.SESSION_COOKIE_NAME, session.access_token, ACCESS_COOKIE_OPTIONS);
+        res.cookie(`${config.SESSION_COOKIE_NAME}_refresh`, session.refresh_token, REFRESH_COOKIE_OPTIONS);
       }
 
       return res.status(201).json({
@@ -75,8 +98,8 @@ export class AuthController {
             email: user.email,
             profile,
           },
-          sessionActive: !!data.session,
-          message: data.session ? "Sign up successful" : "Confirmation email sent. Please check your inbox.",
+          sessionActive: !!session,
+          message: "Account created and signed in successfully.",
         },
       });
     } catch (err) {
@@ -95,7 +118,7 @@ export class AuthController {
       if (error || !data.session) {
         return res.status(401).json({
           error: {
-            message: error?.message || "Invalid credentials",
+            message: error?.message || "Invalid email or password.",
             code: "AUTH_INVALID_CREDENTIALS",
           },
         });
@@ -103,7 +126,7 @@ export class AuthController {
 
       const { session, user } = data;
 
-      // Link/ensure profile exists in DB
+      // Link/ensure profile exists in UserProfile
       let profile = null;
       try {
         profile = await UserService.getOrCreateProfile(
@@ -112,7 +135,7 @@ export class AuthController {
           user.user_metadata?.full_name
         );
       } catch (dbErr: any) {
-        logger.warn(`Could not persist profile to DB: ${dbErr.message}`);
+        logger.warn(`Could not persist profile: ${dbErr.message}`);
       }
 
       // Set HttpOnly cookies
@@ -185,8 +208,7 @@ export class AuthController {
     try {
       const token = req.cookies[config.SESSION_COOKIE_NAME];
       if (token) {
-        // Optional server-side signOut notification to Supabase
-        await supabaseClient.auth.admin?.signOut?.(token).catch(() => {});
+        await supabaseAdmin.auth.admin?.signOut?.(token).catch(() => {});
       }
 
       res.clearCookie(config.SESSION_COOKIE_NAME, {
@@ -224,7 +246,7 @@ export class AuthController {
       try {
         profile = await UserService.getProfileBySupabaseId(user.sub);
       } catch (dbErr: any) {
-        logger.warn(`Could not fetch profile from DB: ${dbErr.message}`);
+        logger.warn(`Could not fetch profile: ${dbErr.message}`);
       }
 
       return res.json({

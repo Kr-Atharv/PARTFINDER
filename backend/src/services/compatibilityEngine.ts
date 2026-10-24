@@ -145,10 +145,10 @@ export class CompatibilityEngine {
         mandatory: req.mandatory,
         expectedValue: req.expectedValue,
         actualOriginalValue: list.join(", ") || undefined,
-        result: match ? "pass" : "fail",
+        result: match ? "pass" : "unverified",
         explanation: match
           ? `Part typical applications list includes '${req.expectedValue}'.`
-          : `Part typical applications list does not list '${req.expectedValue}'.`,
+          : `Part typical applications list does not list '${req.expectedValue}'. A typical applications list is not exhaustive, so this does not prove incompatibility.`,
         supportingSource: this.extractSourceInfo(part),
       };
     }

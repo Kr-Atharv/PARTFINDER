@@ -1,20 +1,65 @@
 import { ArrowLeft, ExternalLink, PackageSearch } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AvailabilityBadge } from '@/components/parts/AvailabilityBadge'
 import { CompareButton } from '@/components/parts/CompareButton'
+import { SaveButton } from '@/components/parts/SaveButton'
 import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { domainById } from '@/data/domains'
-import { getPartById } from '@/services/partSearch'
+import { ApiError, describeError, isAbort } from '@/services/api'
+import { fetchPartByIdStrict, getPartById } from '@/services/partSearch'
+import { userData } from '@/state/userData'
+import type { Part } from '@/types'
+
+type DetailState =
+  | { status: 'loading' }
+  | { status: 'ready'; part: Part; offlineDemo?: string }
+  | { status: 'not_found' }
+  | { status: 'error'; title: string; message: string; retryable: boolean }
 
 export default function PartDetailPage() {
   const { partId } = useParams<{ partId: string }>()
   const location = useLocation()
   const backTo = (location.state as { from?: string } | null)?.from ?? '/find'
-  const part = partId ? getPartById(partId) : undefined
+  const [state, setState] = useState<DetailState>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!partId) {
+      setState({ status: 'not_found' })
+      return
+    }
+    const controller = new AbortController()
+    setState({ status: 'loading' })
+    fetchPartByIdStrict(partId, controller.signal)
+      .then((fetched) => {
+        if (controller.signal.aborted) return
+        if (!fetched) {
+          setState({ status: 'not_found' })
+          return
+        }
+        userData.recordView(fetched)
+        setState({ status: 'ready', part: fetched })
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isAbort(error)) return
+        // Only the built-in demo catalogue may stand in, and only when the server is unavailable.
+        const demo = error instanceof ApiError && error.isUnavailable ? getPartById(partId) : undefined
+        if (demo) {
+          userData.recordView(demo)
+          setState({ status: 'ready', part: demo, offlineDemo: (error as ApiError).message })
+          return
+        }
+        const described = describeError(error, 'This part could not be loaded')
+        setState({ status: 'error', ...described })
+      })
+    return () => controller.abort()
+  }, [partId, attempt])
 
   const backLink = (
     <Link
@@ -26,14 +71,46 @@ export default function PartDetailPage() {
     </Link>
   )
 
-  if (!part) {
+  if (state.status === 'loading') {
+    return (
+      <div className="space-y-6">
+        {backLink}
+        <Card>
+          <LoadingState label="Loading part details…" />
+        </Card>
+      </div>
+    )
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="space-y-6">
+        {backLink}
+        <Alert
+          tone="error"
+          title={state.title}
+          action={
+            state.retryable ? (
+              <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+                Try again
+              </Button>
+            ) : undefined
+          }
+        >
+          {state.message}
+        </Alert>
+      </div>
+    )
+  }
+
+  if (state.status === 'not_found') {
     return (
       <div className="space-y-6">
         {backLink}
         <EmptyState
           icon={PackageSearch}
-          title="No part selected"
-          description="This part could not be found. Search for a part and choose View details to see its specifications."
+          title="Part not found"
+          description="The server has no part with this id. Parts found by live web research are not stored as catalogue records; open them from the research results instead."
           action={
             <Button to="/find" icon={<PackageSearch className="h-4 w-4" aria-hidden="true" />}>
               Go to Find Parts
@@ -44,7 +121,9 @@ export default function PartDetailPage() {
     )
   }
 
-  const domain = domainById[part.domain]
+  const { part } = state
+
+  const domain = domainById[part.domain] || domainById.industrial
 
   return (
     <div className="space-y-6">
@@ -65,8 +144,17 @@ export default function PartDetailPage() {
             {part.manufacturer}
           </p>
         </div>
-        <CompareButton part={part} size="md" className="shrink-0" />
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <SaveButton part={part} size="md" />
+          <CompareButton part={part} size="md" />
+        </div>
       </div>
+
+      {state.offlineDemo && (
+        <Alert tone="warning" title="Server unavailable: showing the built-in demo record">
+          {state.offlineDemo} This is an invented demo record, not data from the server.
+        </Alert>
+      )}
 
       {part.isDemo && (
         <Alert tone="warning" title="Demo data">
@@ -81,19 +169,25 @@ export default function PartDetailPage() {
             <div className="border-b border-line px-5 py-4">
               <CardHeader title="Technical specifications" />
             </div>
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Technical specifications for {part.name}</caption>
-              <tbody className="divide-y divide-line">
-                {part.specs.map((spec) => (
-                  <tr key={spec.label}>
-                    <th scope="row" className="w-1/2 px-5 py-3 font-normal text-ink-500">
-                      {spec.label}
-                    </th>
-                    <td className="px-5 py-3 font-mono text-ink-900">{spec.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {part.specs.length > 0 ? (
+              <table className="w-full text-left text-sm">
+                <caption className="sr-only">Technical specifications for {part.name}</caption>
+                <tbody className="divide-y divide-line">
+                  {part.specs.map((spec) => (
+                    <tr key={spec.label}>
+                      <th scope="row" className="w-1/2 px-5 py-3 font-normal text-ink-500">
+                        {spec.label}
+                      </th>
+                      <td className="px-5 py-3 font-mono text-ink-900">{spec.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-5 text-sm text-ink-500">
+                No technical specifications recorded for this part yet.
+              </div>
+            )}
           </Card>
 
           <Card>
@@ -102,11 +196,15 @@ export default function PartDetailPage() {
 
             <h3 className="mt-5 text-sm font-semibold text-ink-900">Typical applications</h3>
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {part.usedIn.map((entry) => (
-                <li key={entry}>
-                  <Badge>{entry}</Badge>
-                </li>
-              ))}
+              {part.usedIn && part.usedIn.length > 0 ? (
+                part.usedIn.map((entry) => (
+                  <li key={entry}>
+                    <Badge>{entry}</Badge>
+                  </li>
+                ))
+              ) : (
+                <li className="text-sm text-ink-500">No applications listed.</li>
+              )}
             </ul>
           </Card>
         </div>

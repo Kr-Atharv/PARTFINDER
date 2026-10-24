@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="PartFinder: Find. Compare. Verify. Spare-parts discovery and compatibility intelligence." />
     <title>PartFinder</title>
+    <script>
+      // Apply the saved (or system) theme before first paint to avoid a light flash.
+      (function () {
+        try {
+          var saved = localStorage.getItem('partfinder.theme')
+          var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

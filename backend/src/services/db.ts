@@ -1,4 +1,8 @@
 // src/services/db.ts
-import { PrismaClient } from "@prisma/client";
+import { supabaseAdmin } from "./supabaseService";
 
-export const prisma = new PrismaClient();
+/**
+ * Direct Supabase Database client (replaces Prisma Client)
+ */
+export const db = supabaseAdmin;
+export { supabaseAdmin };

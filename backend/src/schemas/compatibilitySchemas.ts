@@ -23,6 +23,32 @@ export const requirementItemSchema = z.object({
   specLabels: z.array(z.string()).optional().default([]),
 });
 
+const candidateClaimSchema = z.object({
+  label: z.string(),
+  claimedValue: z.string(),
+  unit: z.string().nullish(),
+  evidence: z.string().nullish(),
+  /** Flat form used by live research records. */
+  sourceUrl: z.string().nullish(),
+  /** Nested forms used by catalogue records. */
+  sourceRecord: z
+    .object({
+      name: z.string().nullish(),
+      url: z.string().nullish(),
+      isVerified: z.boolean().nullish(),
+      retrievedAt: z.union([z.string(), z.number()]).nullish(),
+    })
+    .nullish(),
+  source: z
+    .object({
+      name: z.string().nullish(),
+      url: z.string().nullish(),
+      isVerified: z.boolean().nullish(),
+      retrievedAt: z.union([z.string(), z.number()]).nullish(),
+    })
+    .nullish(),
+});
+
 export const candidatePartInputSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
@@ -48,6 +74,7 @@ export const candidatePartInputSchema = z.object({
       url: z.string().optional(),
     })
     .optional(),
+  sourceClaims: z.array(candidateClaimSchema).optional(),
 });
 
 export const compatibilityCheckRequestSchema = z.object({

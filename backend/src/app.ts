@@ -8,6 +8,7 @@ import healthRouter from "./routes/health";
 import authRouter from "./routes/auth";
 import partsRouter from "./routes/parts";
 import compatibilityRouter from "./routes/compatibility";
+import researchRouter from "./routes/research";
 import protectedRouter from "./routes/protected";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -46,6 +47,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/parts", partsRouter);
 app.use("/api/compatibility", compatibilityRouter);
+app.use("/api/research", researchRouter);
 app.use("/api/protected", protectedRouter);
 
 // Centralized error handling – must be after routes

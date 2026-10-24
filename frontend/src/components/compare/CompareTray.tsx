@@ -10,7 +10,7 @@ export function CompareTray() {
     <div
       role="region"
       aria-label="Comparison selection"
-      className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white px-4 py-3 shadow-pop sm:px-6 lg:left-64 lg:px-8"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface px-4 py-3 shadow-pop sm:px-6 lg:left-64 lg:px-8"
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
         <div className="min-w-0">

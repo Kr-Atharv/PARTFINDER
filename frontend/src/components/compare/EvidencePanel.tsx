@@ -1,6 +1,7 @@
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
+import { formatDateTime } from '@/lib/format'
 import { displayUrl } from '@/lib/safeUrl'
 import type { Part } from '@/types'
 import type { AssessmentReport, EvidenceAvailability, FieldAssessment } from '@/types/compatibility'
@@ -73,6 +74,20 @@ function EvidenceItem({ field }: { field: FieldAssessment }) {
               </dd>
             </div>
           </>
+        )}
+        {evidence.claimEvidence && (
+          <div className="sm:col-span-2">
+            <dt className="text-xs text-ink-500">Evidence text recorded with the claim</dt>
+            <dd className="break-words rounded border border-line bg-surface-muted px-2 py-1 font-mono text-xs text-ink-800">
+              {evidence.claimEvidence}
+            </dd>
+          </div>
+        )}
+        {evidence.retrievedAt && (
+          <div>
+            <dt className="text-xs text-ink-500">Source read at</dt>
+            <dd className="text-ink-900">{formatDateTime(evidence.retrievedAt)}</dd>
+          </div>
         )}
       </dl>
 

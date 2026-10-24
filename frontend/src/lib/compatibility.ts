@@ -323,7 +323,7 @@ export function overallStatus(counts: StatusCounts): CompatibilityStatus | null 
   return 'potential_match'
 }
 
-function summarise(status: CompatibilityStatus | null, fields: FieldAssessment[], counts: StatusCounts): string {
+export function summarise(status: CompatibilityStatus | null, fields: FieldAssessment[], counts: StatusCounts): string {
   const names = (wanted: CompatibilityStatus) =>
     fields.filter((field) => field.status === wanted).map((field) => field.label).join(', ')
   if (status === 'mismatch') {
@@ -342,7 +342,15 @@ export function assessPart(part: Part, input: RequirementInput): PartAssessment 
   const fields = configuredFields(input, [part.domain]).map(({ def, raw }) => assessField(def, raw, part))
   const counts = countStatuses(fields)
   const status = overallStatus(counts)
-  return { partId: part.id, assessed: fields.length > 0, status, fields, counts, summary: summarise(status, fields, counts) }
+  return {
+    partId: part.id,
+    assessed: fields.length > 0,
+    status,
+    fields,
+    counts,
+    summary: summarise(status, fields, counts),
+    engine: fields.length > 0 ? 'local' : undefined,
+  }
 }
 
 export function assessParts(parts: Part[], input: RequirementInput): AssessmentReport {
@@ -352,5 +360,5 @@ export function assessParts(parts: Part[], input: RequirementInput): AssessmentR
     if (assessment.status === null) partTotals.notAssessed += 1
     else partTotals[assessment.status] += 1
   }
-  return { target: input.target.trim(), parts: assessments, partTotals }
+  return { target: input.target.trim(), engine: 'local', parts: assessments, partTotals }
 }

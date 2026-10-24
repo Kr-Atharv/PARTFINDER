@@ -3,6 +3,7 @@ import { PackageSearch, X } from 'lucide-react'
 import { useCompare } from '@/context/CompareContext'
 import { navItems } from '@/data/navigation'
 import { cn } from '@/lib/cn'
+import { useHealth } from '@/hooks/useHealth'
 
 interface SidebarProps {
   open: boolean
@@ -11,6 +12,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { count } = useCompare()
+  const health = useHealth()
 
   return (
     <>
@@ -28,7 +30,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         id="app-sidebar"
         aria-label="Primary"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-line bg-white transition-transform duration-200',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-line bg-surface transition-transform duration-200',
           'lg:static lg:z-auto lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -96,10 +98,33 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </ul>
         </nav>
 
-        <div className="border-t border-line px-5 py-4">
-          <p className="text-xs leading-relaxed text-ink-500">
-            Frontend foundation build. Live-web search is not connected yet.
+        <div className="border-t border-line px-5 py-4" role="status" aria-live="polite">
+          <p className="flex items-center gap-2 text-xs font-medium text-ink-700">
+            <span
+              className={cn(
+                'h-2 w-2 rounded-full',
+                health.status === 'online' && 'bg-emerald-500',
+                health.status === 'offline' && 'bg-red-500',
+                health.status === 'checking' && 'bg-ink-400',
+              )}
+              aria-hidden="true"
+            />
+            {health.status === 'online' && 'Server connected'}
+            {health.status === 'offline' && 'Server unreachable'}
+            {health.status === 'checking' && 'Checking server…'}
           </p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-500">
+            {health.status === 'offline'
+              ? 'Catalogue search falls back to a clearly labelled demo catalogue.'
+              : health.status === 'online'
+                ? 'Live supplier research also needs a TinyFish key configured on the server.'
+                : 'Contacting the PartFinder API.'}
+          </p>
+          {health.status === 'offline' && (
+            <button type="button" onClick={health.recheck} className="mt-1.5 text-xs font-medium text-brand-700 hover:underline">
+              Check again
+            </button>
+          )}
         </div>
       </aside>
     </>

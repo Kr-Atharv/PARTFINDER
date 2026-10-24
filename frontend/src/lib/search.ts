@@ -1,4 +1,4 @@
-import type { Availability, Part, ResultFilters, SearchCriteria, SortKey } from '@/types'
+import type { Availability, Part, ResultFilters, SearchCriteria, SearchPaging, SearchRefinements, SortKey } from '@/types'
 
 export const emptyFilters: ResultFilters = { manufacturer: '', category: '', availability: '' }
 
@@ -80,4 +80,55 @@ export function uniqueSorted(values: string[]): string[] {
 
 export function hasActiveFilters(filters: ResultFilters): boolean {
   return Boolean(filters.manufacturer || filters.category || filters.availability)
+}
+
+export const emptyRefinements: SearchRefinements = { category: '', availability: '', specLabel: '', specValue: '' }
+
+export const PAGE_SIZES = [10, 20, 50] as const
+export const DEFAULT_PAGE_SIZE = 20
+
+export function hasRefinements(r: SearchRefinements): boolean {
+  return Boolean(r.category || r.availability || r.specLabel || r.specValue)
+}
+
+/**
+ * Same semantics as the backend's category / availability / specification filters
+ * (case-insensitive "contains"), used only for the offline demo catalogue.
+ */
+export function matchRefinements(parts: Part[], refinements: SearchRefinements): Part[] {
+  const category = refinements.category.trim().toLowerCase()
+  const label = refinements.specLabel.trim().toLowerCase()
+  const value = refinements.specValue.trim().toLowerCase()
+  return parts.filter((part) => {
+    if (category && !part.category.toLowerCase().includes(category)) return false
+    if (refinements.availability && part.availability !== refinements.availability) return false
+    if (label || value) {
+      const hit = part.specs.some(
+        (spec) =>
+          (!label || spec.label.toLowerCase().includes(label)) &&
+          (!value || spec.value.toLowerCase().includes(value)),
+      )
+      if (!hit) return false
+    }
+    return true
+  })
+}
+
+export function paginate<T>(items: T[], paging: Pick<SearchPaging, 'page' | 'pageSize'>) {
+  const totalPages = Math.max(1, Math.ceil(items.length / paging.pageSize))
+  const page = Math.min(Math.max(1, paging.page), totalPages)
+  const start = (page - 1) * paging.pageSize
+  return { page, totalPages, total: items.length, items: items.slice(start, start + paging.pageSize) }
+}
+
+/** Counts per distinct value, sorted alphabetically (numeric-aware). */
+export function tally(values: string[]): Array<{ value: string; count: number }> {
+  const counts = new Map<string, number>()
+  for (const raw of values) {
+    const value = raw.trim()
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => collator.compare(a.value, b.value))
 }

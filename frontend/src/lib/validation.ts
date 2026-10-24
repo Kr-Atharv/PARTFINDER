@@ -1,16 +1,23 @@
 import { isDomainId } from '@/data/domains'
-import type { SearchCriteria, SearchErrors } from '@/types'
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, emptyRefinements } from '@/lib/search'
+import type { Availability, SearchCriteria, SearchErrors, SearchPaging, SearchRefinements, SortKey } from '@/types'
 
 export const MAX_QUERY_LENGTH = 100
 export const MAX_FIELD_LENGTH = 60
 
 export const emptyCriteria: SearchCriteria = { query: '', domain: null, manufacturer: '', model: '' }
 
-export function validateCriteria(criteria: SearchCriteria): SearchErrors {
+/**
+ * `allowEmptyQuery` lets people browse by domain, manufacturer, category or
+ * specification without typing a query. A query that is present is still validated.
+ */
+export function validateCriteria(criteria: SearchCriteria, allowEmptyQuery = false): SearchErrors {
   const errors: SearchErrors = {}
   const query = criteria.query.trim()
 
-  if (!query) {
+  if (!query && allowEmptyQuery) {
+    // Browsing: nothing to validate for the query.
+  } else if (!query) {
     errors.query = 'Enter a part number, component name or description to search.'
   } else if (query.length < 2) {
     errors.query = 'Enter at least 2 characters.'
@@ -44,11 +51,75 @@ export function paramsToDraft(params: URLSearchParams): SearchCriteria {
   }
 }
 
+const AVAILABILITY_VALUES: Availability[] = ['in_stock', 'limited', 'out_of_stock', 'unknown']
+const SORT_VALUES: SortKey[] = ['name-asc', 'name-desc', 'manufacturer-asc', 'manufacturer-desc']
+
+export function paramsToRefinements(params: URLSearchParams): SearchRefinements {
+  const availability = params.get('avail') as Availability | null
+  return {
+    category: (params.get('cat') ?? '').slice(0, MAX_FIELD_LENGTH),
+    availability: availability && AVAILABILITY_VALUES.includes(availability) ? availability : '',
+    specLabel: (params.get('spec') ?? '').slice(0, MAX_FIELD_LENGTH),
+    specValue: (params.get('specv') ?? '').slice(0, MAX_FIELD_LENGTH),
+  }
+}
+
+export function paramsToPaging(params: URLSearchParams): SearchPaging {
+  const page = Math.floor(Number(params.get('page')))
+  const size = Number(params.get('size'))
+  const sort = params.get('sort') as SortKey | null
+  return {
+    page: Number.isFinite(page) && page >= 1 ? page : 1,
+    pageSize: (PAGE_SIZES as readonly number[]).includes(size) ? size : DEFAULT_PAGE_SIZE,
+    sort: sort && SORT_VALUES.includes(sort) ? sort : 'name-asc',
+  }
+}
+
+/** True when the URL asks for something to be listed even without a query. */
+export function hasBrowseIntent(params: URLSearchParams): boolean {
+  const draft = paramsToDraft(params)
+  const r = paramsToRefinements(params)
+  return Boolean(
+    params.get('browse') ||
+      draft.domain ||
+      draft.manufacturer.trim() ||
+      draft.model.trim() ||
+      r.category ||
+      r.availability ||
+      r.specLabel ||
+      r.specValue,
+  )
+}
+
 /** Returns criteria only when the URL describes a valid, runnable search. */
 export function paramsToCriteria(params: URLSearchParams): SearchCriteria | null {
   const draft = paramsToDraft(params)
-  if (hasErrors(validateCriteria(draft))) return null
+  if (hasErrors(validateCriteria(draft, hasBrowseIntent(params)))) return null
   return normalizeCriteria(draft)
+}
+
+/**
+ * Builds the URL for a search. Paging resets to page 1 unless a page is given, and
+ * defaults are omitted so shared links stay short.
+ */
+export function buildSearchParams(
+  criteria: SearchCriteria,
+  refinements: SearchRefinements = emptyRefinements,
+  paging: Partial<SearchPaging> = {},
+  extra: { browse?: boolean; tab?: string } = {},
+): URLSearchParams {
+  const params = criteriaToParams(criteria)
+  if (!criteria.query.trim()) params.delete('q')
+  if (refinements.category) params.set('cat', refinements.category)
+  if (refinements.availability) params.set('avail', refinements.availability)
+  if (refinements.specLabel) params.set('spec', refinements.specLabel)
+  if (refinements.specValue) params.set('specv', refinements.specValue)
+  if (paging.sort && paging.sort !== 'name-asc') params.set('sort', paging.sort)
+  if (paging.pageSize && paging.pageSize !== DEFAULT_PAGE_SIZE) params.set('size', String(paging.pageSize))
+  if (paging.page && paging.page > 1) params.set('page', String(paging.page))
+  if (extra.browse) params.set('browse', '1')
+  if (extra.tab) params.set('tab', extra.tab)
+  return params
 }
 
 export function normalizeCriteria(criteria: SearchCriteria): SearchCriteria {

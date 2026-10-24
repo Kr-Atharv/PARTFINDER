@@ -1,8 +1,10 @@
 import { RotateCcw, Search } from 'lucide-react'
+import { useId } from 'react'
 import type { FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { SearchBox } from '@/components/search/SearchBox'
 import { domains } from '@/data/domains'
 import { cn } from '@/lib/cn'
 import { MAX_FIELD_LENGTH, MAX_QUERY_LENGTH } from '@/lib/validation'
@@ -13,14 +15,24 @@ interface SearchFormProps {
   errors: SearchErrors
   loading: boolean
   onChange: (next: SearchCriteria) => void
-  onSubmit: () => void
+  /** Called with the criteria to run when a suggestion was picked (the form state may not have updated yet). */
+  onSubmit: (override?: SearchCriteria) => void
   onReset: () => void
+  /** Real manufacturer names from the catalogue, offered as completions. Omitted when unavailable. */
+  manufacturerOptions?: string[]
 }
 
-export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset }: SearchFormProps) {
+export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset, manufacturerOptions }: SearchFormProps) {
+  const listId = useId()
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault() // Enter in any field submits the form.
     onSubmit()
+  }
+
+  const handlePick = (query: string) => {
+    const next = { ...value, query }
+    onChange(next)
+    onSubmit(next)
   }
 
   const toggleDomain = (id: SearchCriteria['domain']) => {
@@ -45,7 +57,7 @@ export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset
                     'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors',
                     selected
                       ? 'border-brand-500 bg-brand-50 text-brand-700'
-                      : 'border-line-strong bg-white text-ink-600 hover:bg-surface-muted',
+                      : 'border-line-strong bg-surface text-ink-600 hover:bg-surface-muted',
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />
@@ -59,18 +71,17 @@ export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset
           </p>
         </fieldset>
 
-        <Input
-          className="mt-5"
-          label="Part number, component name or description"
-          placeholder="e.g. hydraulic seal kit, voltage regulator, brake pad"
-          icon={<Search className="h-4 w-4" aria-hidden="true" />}
-          value={value.query}
-          onChange={(event) => onChange({ ...value, query: event.target.value })}
-          error={errors.query}
-          maxLength={MAX_QUERY_LENGTH + 20}
-          autoComplete="off"
-          enterKeyHint="search"
-        />
+        <div className="mt-5">
+          <SearchBox
+            label="Part number, component name or description"
+            placeholder="e.g. hydraulic seal kit, voltage regulator, brake pad"
+            value={value.query}
+            onChange={(query) => onChange({ ...value, query })}
+            onSelect={handlePick}
+            error={errors.query}
+            maxLength={MAX_QUERY_LENGTH + 20}
+          />
+        </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Input
@@ -81,7 +92,15 @@ export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset
             error={errors.manufacturer}
             maxLength={MAX_FIELD_LENGTH + 20}
             autoComplete="off"
+            list={manufacturerOptions && manufacturerOptions.length > 0 ? listId : undefined}
           />
+          {manufacturerOptions && manufacturerOptions.length > 0 && (
+            <datalist id={listId}>
+              {manufacturerOptions.slice(0, 200).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          )}
           <Input
             label="Model or application (optional)"
             placeholder="e.g. press, sedan, motor"

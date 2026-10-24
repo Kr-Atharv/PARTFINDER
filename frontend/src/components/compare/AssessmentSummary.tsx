@@ -1,11 +1,11 @@
-import { Alert } from '@/components/ui/Alert'
 import { Card } from '@/components/ui/Card'
+import { reasonLabels } from '@/lib/compatibility'
 import type { Part } from '@/types'
 import type { AssessmentReport } from '@/types/compatibility'
 import { StatusBadge } from './StatusBadge'
 
 export const SAFETY_WARNING =
-  'A Potential Match is not a guarantee of safe installation. Critical substitutions require qualified human approval.'
+  'A PASS is not a guarantee of safe installation or fit. Critical substitutions require qualified human approval.'
 
 interface AssessmentSummaryProps {
   parts: Part[]
@@ -25,7 +25,7 @@ export function AssessmentSummary({ parts, report }: AssessmentSummaryProps) {
       )}
 
       <p className="text-sm text-ink-700" aria-live="polite">
-        {parts.length} {parts.length === 1 ? 'part' : 'parts'}: {partTotals.potential_match} Potential Match
+        {parts.length} {parts.length === 1 ? 'part' : 'parts'}: {partTotals.potential_match} Pass
         {' · '}
         {partTotals.mismatch} Mismatch{' · '}
         {partTotals.unverified} Unverified
@@ -37,6 +37,7 @@ export function AssessmentSummary({ parts, report }: AssessmentSummaryProps) {
           const assessment = report.parts.find((entry) => entry.partId === part.id)
           if (!assessment) return null
           const { counts } = assessment
+          const nonPass = assessment.fields.filter((field) => field.status !== 'potential_match')
           return (
             <li key={part.id}>
               <Card className="h-full space-y-3">
@@ -68,15 +69,28 @@ export function AssessmentSummary({ parts, report }: AssessmentSummaryProps) {
                   </>
                 ) : null}
                 <p className="text-sm leading-relaxed text-ink-600">{assessment.summary}</p>
+                {nonPass.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-ink-700">Reasons</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-ink-600">
+                      {nonPass.map((field) => (
+                        <li key={field.fieldId}>
+                          <span className="font-medium text-ink-800">{field.label}</span>:{' '}
+                          {field.status === 'mismatch'
+                            ? 'recorded value contradicts the requirement'
+                            : field.reason
+                              ? reasonLabels[field.reason]
+                              : 'could not be verified'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </Card>
             </li>
           )
         })}
       </ul>
-
-      <Alert tone="warning" title="Not an installation guarantee">
-        {SAFETY_WARNING}
-      </Alert>
     </div>
   )
 }
