@@ -40,21 +40,21 @@ export const workflowSteps: WorkflowStepWithIcon[] = [
 export const sampleRecentSearches: RecentSearch[] = [
   {
     id: 'sample-1',
-    query: 'Hydraulic cylinder seal kit, 80 mm bore',
+    query: 'Hydraulic seal kit 80 mm',
     domain: 'industrial',
     status: 'completed',
     when: 'Sample',
   },
   {
     id: 'sample-2',
-    query: '3.3 V LDO regulator, SOT-223',
+    query: '3.3 V voltage regulator SOT-223',
     domain: 'electronics',
     status: 'in_progress',
     when: 'Sample',
   },
   {
     id: 'sample-3',
-    query: 'Front brake pad set, ceramic',
+    query: 'Front brake pad ceramic',
     domain: 'automotive',
     status: 'needs_review',
     when: 'Sample',

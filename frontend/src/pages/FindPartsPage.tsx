@@ -1,80 +1,183 @@
+import { Search } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Settings2 } from 'lucide-react'
+import { ResultsPanel } from '@/components/search/ResultsPanel'
+import { SearchForm } from '@/components/search/SearchForm'
+import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Input } from '@/components/ui/Input'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { PageHeading } from '@/components/ui/PageHeading'
-import { domains, isDomainId } from '@/data/domains'
-import { cn } from '@/lib/cn'
+import { domainById } from '@/data/domains'
+import {
+  criteriaToParams,
+  emptyCriteria,
+  hasErrors,
+  normalizeCriteria,
+  paramsToCriteria,
+  paramsToDraft,
+  validateCriteria,
+} from '@/lib/validation'
+import { searchParts } from '@/services/partSearch'
+import type { DomainId, Part, SearchCriteria, SearchErrors } from '@/types'
+
+type SearchState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'success'; results: Part[] }
+  | { status: 'error'; message: string }
+
+const EXAMPLE_SEARCHES: Array<SearchCriteria & { domain: DomainId }> = [
+  { query: 'hydraulic seal kit', domain: 'industrial', manufacturer: '', model: '' },
+  { query: 'voltage regulator', domain: 'electronics', manufacturer: '', model: '' },
+  { query: 'brake pad', domain: 'automotive', manufacturer: '', model: '' },
+]
 
 export default function FindPartsPage() {
   const [params, setParams] = useSearchParams()
-  const domainParam = params.get('domain')
-  const activeDomain = isDomainId(domainParam) ? domainParam : null
-  const query = params.get('q') ?? ''
+  const paramKey = params.toString()
 
-  const selectDomain = (id: string) => {
-    const next = new URLSearchParams(params)
-    if (activeDomain === id) next.delete('domain')
-    else next.set('domain', id)
-    setParams(next, { replace: true })
+  // The URL is the source of truth for the submitted search, so results survive
+  // navigation, the back button and links from other pages.
+  const urlDraft = useMemo(() => paramsToDraft(new URLSearchParams(paramKey)), [paramKey])
+  const criteria = useMemo(() => paramsToCriteria(new URLSearchParams(paramKey)), [paramKey])
+
+  const [draft, setDraft] = useState<SearchCriteria>(urlDraft)
+  const [errors, setErrors] = useState<SearchErrors>({})
+  const [runId, setRunId] = useState(0)
+  const [state, setState] = useState<SearchState>({ status: 'idle' })
+
+  // Keep the form in step with the URL (back/forward, links from other pages).
+  useEffect(() => {
+    setDraft(urlDraft)
+    setErrors({})
+  }, [urlDraft])
+
+  useEffect(() => {
+    if (!criteria) {
+      setState({ status: 'idle' })
+      return
+    }
+    let cancelled = false
+    setState({ status: 'loading' })
+    searchParts(criteria)
+      .then((results) => {
+        if (!cancelled) setState({ status: 'success', results })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'The search could not be completed.'
+        setState({ status: 'error', message })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [criteria, runId])
+
+  const runSearch = (next: SearchCriteria) => {
+    const found = validateCriteria(next)
+    setErrors(found)
+    if (hasErrors(found)) return
+    setParams(criteriaToParams(next))
+    setRunId((n) => n + 1) // Re-run even when the submitted search is unchanged.
   }
+
+  // Editing a field clears that field's validation message.
+  const handleDraftChange = (next: SearchCriteria) => {
+    setDraft(next)
+    setErrors((prev) => ({
+      query: next.query !== draft.query ? undefined : prev.query,
+      manufacturer: next.manufacturer !== draft.manufacturer ? undefined : prev.manufacturer,
+      model: next.model !== draft.model ? undefined : prev.model,
+    }))
+  }
+
+  const handleReset = () => {
+    setDraft(emptyCriteria)
+    setErrors({})
+    setParams({})
+  }
+
+  const loading = state.status === 'loading'
 
   return (
     <div className="space-y-6">
       <PageHeading
         title="Find Parts"
-        description="Search for a part across industrial, electronics and automotive sources."
-        actions={<Badge tone="warning">Search not connected</Badge>}
+        description="Search by part number, component name or description across industrial, electronics and automotive parts."
+        actions={<Badge tone="warning">Demo data</Badge>}
       />
 
-      <Card>
-        <div role="group" aria-label="Domain" className="flex flex-wrap gap-2">
-          {domains.map(({ id, label, icon: Icon }) => {
-            const selected = activeDomain === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => selectDomain(id)}
-                aria-pressed={selected}
-                className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors',
-                  selected
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-line-strong bg-white text-ink-600 hover:bg-surface-muted',
-                )}
-              >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                {label}
-              </button>
-            )
-          })}
-        </div>
+      <Alert tone="info" title="Searching a demo catalogue">
+        Results come from a small built-in sample catalogue. Manufacturers, part numbers,
+        specifications and sources are invented for demonstration and are not verified. Live-web
+        search is not connected yet.
+      </Alert>
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-          <Input
-            className="flex-1"
-            label="Part name or number"
-            placeholder="e.g. part number, description or specification"
-            icon={<Search className="h-4 w-4" aria-hidden="true" />}
-            defaultValue={query}
-            disabled
-            hint="Part search is disabled until the search workflow is built."
-          />
-          <Button disabled icon={<Search className="h-4 w-4" aria-hidden="true" />}>
-            Search
-          </Button>
-        </div>
-      </Card>
-
-      <EmptyState
-        icon={Settings2}
-        title="Part search is not available yet"
-        description="This page is a placeholder. Search, filtering and results will be added in the next stage of development. No requests are made to any backend."
+      <SearchForm
+        value={draft}
+        errors={errors}
+        loading={loading}
+        onChange={handleDraftChange}
+        onSubmit={() => runSearch(draft)}
+        onReset={handleReset}
       />
+
+      {state.status === 'idle' && (
+        <EmptyState
+          icon={Search}
+          title="Search for a part"
+          description="Enter a part number, component name or description above. You can narrow by domain, manufacturer or model. Or try one of these examples."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              {EXAMPLE_SEARCHES.map((example) => {
+                const DomainIcon = domainById[example.domain].icon
+                return (
+                  <Button
+                    key={example.query}
+                    variant="secondary"
+                    size="sm"
+                    icon={<DomainIcon className="h-4 w-4" aria-hidden="true" />}
+                    onClick={() => {
+                      const next = normalizeCriteria(example)
+                      setDraft(next)
+                      runSearch(next)
+                    }}
+                  >
+                    {example.query}
+                  </Button>
+                )
+              })}
+            </div>
+          }
+        />
+      )}
+
+      {state.status === 'loading' && (
+        <Card>
+          <LoadingState label="Searching…" />
+        </Card>
+      )}
+
+      {state.status === 'error' && (
+        <Alert
+          tone="error"
+          title="The search could not be completed"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => setRunId((n) => n + 1)}>
+              Try again
+            </Button>
+          }
+        >
+          {state.message}
+        </Alert>
+      )}
+
+      {state.status === 'success' && criteria && (
+        <ResultsPanel key={`${paramKey}:${runId}`} results={state.results} criteria={criteria} />
+      )}
     </div>
   )
 }

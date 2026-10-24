@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
-export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'info'
+export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'info' | 'danger'
 
 interface BadgeProps {
   tone?: BadgeTone
@@ -17,6 +17,7 @@ const tones: Record<BadgeTone, { wrap: string; dot: string }> = {
   success: { wrap: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-500' },
   warning: { wrap: 'bg-amber-50 text-amber-800 border-amber-100', dot: 'bg-amber-500' },
   info: { wrap: 'bg-sky-50 text-sky-700 border-sky-100', dot: 'bg-sky-500' },
+  danger: { wrap: 'bg-red-50 text-red-700 border-red-100', dot: 'bg-red-500' },
 }
 
 export function Badge({ tone = 'neutral', dot = false, className, children }: BadgeProps) {

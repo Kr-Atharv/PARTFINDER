@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { CompareTray } from '@/components/compare/CompareTray'
+import { useCompare } from '@/context/CompareContext'
+import { cn } from '@/lib/cn'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { pathname } = useLocation()
+  const { count } = useCompare()
+  const showTray = count > 0 && pathname !== '/compare'
 
   // Close the mobile drawer on navigation.
   useEffect(() => {
@@ -27,12 +32,13 @@ export function AppLayout() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} menuOpen={sidebarOpen} />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className={cn('flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8', showTray && 'pb-28')}>
           <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>
         </main>
       </div>
+      {showTray && <CompareTray />}
     </div>
   )
 }

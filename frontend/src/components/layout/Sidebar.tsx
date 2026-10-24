@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { PackageSearch, X } from 'lucide-react'
+import { useCompare } from '@/context/CompareContext'
 import { navItems } from '@/data/navigation'
 import { cn } from '@/lib/cn'
 
@@ -9,6 +10,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
+  const { count } = useCompare()
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -77,6 +80,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         aria-hidden="true"
                       />
                       {label}
+                      {to === '/compare' && count > 0 && (
+                        <span
+                          className="ml-auto rounded bg-brand-600 px-1.5 py-0.5 font-mono text-xs font-medium text-white"
+                          aria-label={`${count} selected`}
+                        >
+                          {count}
+                        </span>
+                      )}
                     </>
                   )}
                 </NavLink>

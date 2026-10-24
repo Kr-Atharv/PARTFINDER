@@ -1,9 +1,10 @@
+import { Loader2 } from 'lucide-react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { LinkProps } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 
-type Variant = 'primary' | 'secondary' | 'ghost'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'selected'
 type Size = 'sm' | 'md' | 'lg'
 
 interface BaseProps {
@@ -11,6 +12,8 @@ interface BaseProps {
   size?: Size
   icon?: ReactNode
   iconRight?: ReactNode
+  /** Shows a spinner and disables the button. Ignored for link buttons. */
+  loading?: boolean
   className?: string
   children: ReactNode
 }
@@ -28,6 +31,8 @@ const variants: Record<Variant, string> = {
   secondary:
     'border border-line-strong bg-white text-ink-800 shadow-card hover:bg-surface-muted disabled:text-ink-400',
   ghost: 'text-ink-600 hover:bg-surface-subtle hover:text-ink-900 disabled:text-ink-400',
+  selected:
+    'border border-brand-500 bg-brand-50 text-brand-700 hover:bg-brand-100 disabled:text-ink-400',
 }
 
 const sizes: Record<Size, string> = {
@@ -47,11 +52,19 @@ export function buttonClasses(variant: Variant = 'primary', size: Size = 'md', c
 }
 
 export function Button(props: ButtonProps) {
-  const { variant = 'primary', size = 'md', icon, iconRight, className, children } = props
+  const {
+    variant = 'primary',
+    size = 'md',
+    icon,
+    iconRight,
+    loading = false,
+    className,
+    children,
+  } = props
   const classes = buttonClasses(variant, size, className)
   const content = (
     <>
-      {icon}
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : icon}
       {children}
       {iconRight}
     </>
@@ -64,6 +77,7 @@ export function Button(props: ButtonProps) {
       size: _s,
       icon: _i,
       iconRight: _ir,
+      loading: _l,
       className: _c,
       children: _ch,
       ...linkRest
@@ -81,13 +95,21 @@ export function Button(props: ButtonProps) {
     size: _s,
     icon: _i,
     iconRight: _ir,
+    loading: _l,
     className: _c,
     children: _ch,
     type = 'button',
+    disabled,
     ...buttonRest
   } = props
   return (
-    <button type={type} className={classes} {...buttonRest}>
+    <button
+      type={type}
+      className={classes}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...buttonRest}
+    >
       {content}
     </button>
   )
