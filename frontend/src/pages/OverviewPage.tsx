@@ -146,9 +146,12 @@ export default function OverviewPage() {
               result.
             </p>
           </div>
-          <div className="shrink-0">
-            <Button to="/find" size="lg" icon={<Search className="h-5 w-5" aria-hidden="true" />} className="w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <Button to="/find" size="lg" icon={<Search className="h-5 w-5" aria-hidden="true" />} className="w-full sm:w-auto">
               Find a Part
+            </Button>
+            <Button to="/compare" variant="secondary" size="lg" icon={<GitCompareArrows className="h-5 w-5" aria-hidden="true" />} className="w-full sm:w-auto">
+              Compare Parts
             </Button>
           </div>
         </div>

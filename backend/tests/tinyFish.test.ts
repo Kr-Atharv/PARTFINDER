@@ -82,6 +82,72 @@ Bore diameter: 85 mm
     expect(record?.conflictingSpecs?.length).toBeGreaterThan(0);
     expect(record?.conflictingSpecs?.[0].label).toContain("Bore");
   });
+
+  it("filters disallowed domains and verifies authentic manufacturer and distributor tiers", () => {
+    expect(TinyFishService.isDisallowedDomain("https://www.youtube.com/watch?v=123")).toBe(true);
+    expect(TinyFishService.isDisallowedDomain("https://reddit.com/r/engineering")).toBe(true);
+    expect(TinyFishService.isDisallowedDomain("https://www.skf.com/products/6205")).toBe(false);
+    expect(TinyFishService.isDisallowedDomain("https://www.mouser.com/ProductDetail/123")).toBe(false);
+
+    expect(TinyFishService.getVerificationTier("https://www.skf.com/us/products/6205")).toBe("official_manufacturer");
+    expect(TinyFishService.getVerificationTier("https://www.festo.com/pneumatic-valves")).toBe("official_manufacturer");
+    expect(TinyFishService.getVerificationTier("https://www.digikey.com/product-detail/123")).toBe("authorized_distributor");
+    expect(TinyFishService.getVerificationTier("https://www.mcmaster.com/bearings")).toBe("authorized_distributor");
+    expect(TinyFishService.getVerificationTier("https://general-industrial-supply.com/item")).toBe("verified_supplier");
+  });
+
+  it("extracts comprehensive category-aware technical specifications including dimensions, pressure, flow, and electrical", () => {
+    const valvePage = {
+      url: "https://www.parker.com/valves/d1vw",
+      title: "Directional Control Valve D1VW | Parker Hannifin",
+      format: "markdown",
+      text: `
+# Parker D1VW Directional Control Valve
+Manufacturer: Parker Hannifin
+Part Number: D1VW001CNJW
+Operating pressure: 350 bar
+Flow rate: 80 l/min
+Port size: 1/4" NPT
+Operating voltage: 24 V
+Current rating: 1.5 A
+Power rating: 36 W
+Operating temperature: -20 to 70 °C
+Weight: 2.1 kg
+Material: Cast Iron
+Thread: G 1/4
+Speed rating: 1800 rpm
+Tolerance: ±0.05 mm
+Ships from: Cleveland Warehouse, USA
+Compatible with: Haas CNC milling machines
+      `,
+    };
+
+    const record = TinyFishService.extractPartFromPageContent(
+      valvePage,
+      {
+        position: 1,
+        title: valvePage.title,
+        url: valvePage.url,
+        snippet: "Directional control valve",
+        site_name: "Parker Hannifin",
+      },
+      "industrial"
+    );
+
+    expect(record).not.toBeNull();
+    expect(record?.verificationTier).toBe("official_manufacturer");
+    expect(record?.source.name).toBe("Parker Hannifin");
+    expect(record?.location).toContain("Cleveland Warehouse");
+
+    const labels = (record?.specs || []).map((s) => s.label.toLowerCase());
+    expect(labels.some((l) => l.includes("pressure"))).toBe(true);
+    expect(labels.some((l) => l.includes("flow rate"))).toBe(true);
+    expect(labels.some((l) => l.includes("voltage"))).toBe(true);
+    expect(labels.some((l) => l.includes("power"))).toBe(true);
+    expect(labels.some((l) => l.includes("weight"))).toBe(true);
+    expect(labels.some((l) => l.includes("material"))).toBe(true);
+    expect(labels.some((l) => l.includes("port size"))).toBe(true);
+  });
 });
 
 describe("POST /api/research/search Mocked Integration Tests", () => {

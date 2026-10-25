@@ -59,6 +59,8 @@ export interface ConflictingSpec {
   claims: Array<{ value: string; sourceUrl: string }>
 }
 
+export type VerificationTier = 'official_manufacturer' | 'authorized_distributor' | 'verified_supplier' | 'unverified'
+
 export interface Part {
   id: string
   name: string
@@ -88,6 +90,10 @@ export interface Part {
   /** `snippet_only` means the page itself could not be fetched, only the search snippet was read. */
   evidenceLevel?: 'full_page' | 'snippet_only'
   conflictingSpecs?: ConflictingSpec[]
+  /** Provenance verification tier */
+  verificationTier?: VerificationTier
+  /** Location or warehouse origin if detected */
+  location?: string
 }
 
 export interface SearchCriteria {
@@ -113,12 +119,46 @@ export type SortKey = 'name-asc' | 'name-desc' | 'manufacturer-asc' | 'manufactu
 /* Advanced search                                                     */
 /* ------------------------------------------------------------------ */
 
+export interface NumericRangeSpec {
+  min?: string | number
+  max?: string | number
+  unit?: string
+}
+
+export interface DetailedSpecFilters {
+  manufacturer?: string
+  partNumber?: string
+  category?: string
+  material?: string
+  threadSize?: string
+  portSize?: string
+  tolerance?: string
+  compatibleModel?: string
+  location?: string
+
+  // Dynamic Numeric Ranges
+  diameter?: NumericRangeSpec
+  length?: NumericRangeSpec
+  width?: NumericRangeSpec
+  height?: NumericRangeSpec
+  weight?: NumericRangeSpec
+  pressure?: NumericRangeSpec
+  temperature?: NumericRangeSpec
+  voltage?: NumericRangeSpec
+  current?: NumericRangeSpec
+  power?: NumericRangeSpec
+  flowRate?: NumericRangeSpec
+  speed?: NumericRangeSpec
+  price?: NumericRangeSpec
+}
+
 /** Refinements applied on top of the core search. All server-side for catalogue results. */
 export interface SearchRefinements {
   category: string
   availability: Availability | ''
   specLabel: string
   specValue: string
+  specs?: DetailedSpecFilters
 }
 
 export interface SearchPaging {

@@ -1,9 +1,11 @@
-import { Bookmark, BookmarkCheck, ExternalLink, FileText, TriangleAlert } from 'lucide-react'
+import { Bookmark, BookmarkCheck, ExternalLink, FileText, MapPin, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AuthenticityBadge } from '@/components/parts/AuthenticityBadge'
 import { StatusBadge } from '@/components/compare/StatusBadge'
 import { AvailabilityBadge } from '@/components/parts/AvailabilityBadge'
 import { CompareButton } from '@/components/parts/CompareButton'
+import { CrossReferenceSection } from '@/components/parts/CrossReferenceSection'
 import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -213,8 +215,17 @@ export function PartDrawer({ part, onClose }: PartDrawerProps) {
           <Badge tone="brand">{domain.label}</Badge>
           {part.category && <Badge>{part.category}</Badge>}
           <AvailabilityBadge availability={part.availability} />
+          {part.verificationTier && (
+            <AuthenticityBadge tier={part.verificationTier} supplierName={part.source.name} />
+          )}
+          {part.location && (
+            <Badge tone="neutral" className="inline-flex items-center gap-1 text-xs">
+              <MapPin className="h-3 w-3 text-ink-500" aria-hidden="true" />
+              {part.location}
+            </Badge>
+          )}
           {part.isDemo && <Badge tone="warning">Demo data</Badge>}
-          {part.origin === 'research' && <Badge tone="info">Live research</Badge>}
+          {part.origin === 'research' && !part.verificationTier && <Badge tone="info">Live research</Badge>}
           {part.evidenceLevel === 'snippet_only' && (
             <Tooltip content="The source page could not be fetched, so values were read from the search snippet only. Treat them with extra care.">
               <span tabIndex={0}>
@@ -320,6 +331,14 @@ export function PartDrawer({ part, onClose }: PartDrawerProps) {
 
         <Section title="Compatibility with your requirements">
           <DrawerCompatibility part={part} onNavigate={onClose} />
+        </Section>
+
+        <Section title="Cross-Reference & Drop-In Equivalents">
+          <CrossReferenceSection
+            partNumber={part.partNumber}
+            manufacturer={part.manufacturer}
+            currentPart={part}
+          />
         </Section>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-5">

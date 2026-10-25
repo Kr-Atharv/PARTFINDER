@@ -10,12 +10,16 @@ import partsRouter from "./routes/parts";
 import compatibilityRouter from "./routes/compatibility";
 import researchRouter from "./routes/research";
 import protectedRouter from "./routes/protected";
+import visionRouter from "./routes/vision";
+import crossReferenceRouter from "./routes/crossReference";
+import datasheetRouter from "./routes/datasheet";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
 
-// Body parsing
-app.use(express.json());
+// Body parsing (allow base64 uploads for images and datasheets)
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
 // Cookie parser
 app.use(cookieParser());
@@ -49,6 +53,9 @@ app.use("/api/parts", partsRouter);
 app.use("/api/compatibility", compatibilityRouter);
 app.use("/api/research", researchRouter);
 app.use("/api/protected", protectedRouter);
+app.use("/api/vision", visionRouter);
+app.use("/api/cross-reference", crossReferenceRouter);
+app.use("/api/datasheets", datasheetRouter);
 
 // Centralized error handling – must be after routes
 app.use(errorHandler);

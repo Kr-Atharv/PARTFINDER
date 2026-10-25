@@ -1,4 +1,15 @@
-import type { Availability, Part, ResultFilters, SearchCriteria, SearchPaging, SearchRefinements, SortKey } from '@/types'
+import { parseQuantity, toBase } from '@/lib/quantity'
+import type {
+  Availability,
+  NumericRangeSpec,
+  Part,
+  PartSpec,
+  ResultFilters,
+  SearchCriteria,
+  SearchPaging,
+  SearchRefinements,
+  SortKey,
+} from '@/types'
 
 export const emptyFilters: ResultFilters = { manufacturer: '', category: '', availability: '' }
 
@@ -16,6 +27,7 @@ function buildHaystack(part: Part): string {
     part.manufacturer,
     part.category,
     part.description,
+    ...(part.location ? [part.location] : []),
     ...part.keywords,
     ...part.specs.map((spec) => `${spec.label} ${spec.value}`),
   ]
@@ -24,7 +36,7 @@ function buildHaystack(part: Part): string {
 }
 
 /** Substring match that also tolerates punctuation differences in part numbers. */
-function includesLoose(haystack: string, needle: string): boolean {
+export function includesLoose(haystack: string, needle: string): boolean {
   const trimmed = needle.toLowerCase().trim()
   if (!trimmed) return true
   if (haystack.includes(trimmed)) return true
@@ -88,20 +100,87 @@ export const PAGE_SIZES = [10, 20, 50] as const
 export const DEFAULT_PAGE_SIZE = 20
 
 export function hasRefinements(r: SearchRefinements): boolean {
-  return Boolean(r.category || r.availability || r.specLabel || r.specValue)
+  if (r.category || r.availability || r.specLabel || r.specValue) return true
+  if (r.specs) {
+    const s = r.specs
+    if (s.manufacturer || s.partNumber || s.category || s.material || s.threadSize || s.portSize || s.tolerance || s.compatibleModel || s.location) {
+      return true
+    }
+    const ranges = [
+      s.diameter,
+      s.length,
+      s.width,
+      s.height,
+      s.weight,
+      s.pressure,
+      s.temperature,
+      s.voltage,
+      s.current,
+      s.power,
+      s.flowRate,
+      s.speed,
+      s.price,
+    ]
+    if (ranges.some((rng) => rng && ((rng.min !== undefined && rng.min !== '') || (rng.max !== undefined && rng.max !== '')))) {
+      return true
+    }
+  }
+  return false
+}
+
+function checkRangeMatch(specs: PartSpec[], labelKeywords: string[], range?: NumericRangeSpec): boolean {
+  if (!range || ((range.min === undefined || range.min === '') && (range.max === undefined || range.max === ''))) {
+    return true
+  }
+
+  const minVal = range.min !== undefined && range.min !== '' ? Number(range.min) : -Infinity
+  const maxVal = range.max !== undefined && range.max !== '' ? Number(range.max) : Infinity
+
+  const matchedSpecs = specs.filter((s) => {
+    const lower = s.label.toLowerCase()
+    return labelKeywords.some((kw) => lower.includes(kw))
+  })
+
+  if (matchedSpecs.length === 0) return false
+
+  return matchedSpecs.some((spec) => {
+    const q = parseQuantity(spec.value)
+    if (!q) return false
+
+    let specMin = q.min
+    let specMax = q.max
+
+    // Unit conversion if requested range has a unit and parsed quantity has a unit
+    if (range.unit && q.unit) {
+      const convertedMin = toBase(specMin, q.unit, range.unit)
+      const convertedMax = toBase(specMax, q.unit, range.unit)
+      if (convertedMin !== null && convertedMax !== null) {
+        specMin = convertedMin
+        specMax = convertedMax
+      }
+    }
+
+    if (Number.isFinite(minVal) && specMax < minVal) return false
+    if (Number.isFinite(maxVal) && specMin > maxVal) return false
+    return true
+  })
 }
 
 /**
  * Same semantics as the backend's category / availability / specification filters
- * (case-insensitive "contains"), used only for the offline demo catalogue.
+ * (case-insensitive "contains"), used for both the offline demo catalogue and live filtering.
  */
 export function matchRefinements(parts: Part[], refinements: SearchRefinements): Part[] {
-  const category = refinements.category.trim().toLowerCase()
+  const category = (refinements.category || refinements.specs?.category || '').trim().toLowerCase()
   const label = refinements.specLabel.trim().toLowerCase()
   const value = refinements.specValue.trim().toLowerCase()
+  const s = refinements.specs
+
   return parts.filter((part) => {
     if (category && !part.category.toLowerCase().includes(category)) return false
     if (refinements.availability && part.availability !== refinements.availability) return false
+
+    // Core single spec filter
     if (label || value) {
       const hit = part.specs.some(
         (spec) =>
@@ -110,6 +189,57 @@ export function matchRefinements(parts: Part[], refinements: SearchRefinements):
       )
       if (!hit) return false
     }
+
+    // Detailed Specification Filters
+    if (s) {
+      if (s.manufacturer && !includesLoose(part.manufacturer, s.manufacturer)) return false
+      if (s.partNumber && !includesLoose(part.partNumber, s.partNumber)) return false
+      if (s.compatibleModel && !part.usedIn.some((u) => includesLoose(u, s.compatibleModel!)) && !includesLoose(part.description, s.compatibleModel)) {
+        return false
+      }
+      if (s.material) {
+        const matHit = part.specs.some((spec) => spec.label.toLowerCase().includes('material') && includesLoose(spec.value, s.material!))
+        if (!matHit && !includesLoose(part.description, s.material)) return false
+      }
+      if (s.threadSize) {
+        const threadHit = part.specs.some((spec) => spec.label.toLowerCase().includes('thread') && includesLoose(spec.value, s.threadSize!))
+        if (!threadHit) return false
+      }
+      if (s.portSize) {
+        const portHit = part.specs.some((spec) => (spec.label.toLowerCase().includes('port') || spec.label.toLowerCase().includes('inlet') || spec.label.toLowerCase().includes('outlet')) && includesLoose(spec.value, s.portSize!))
+        if (!portHit) return false
+      }
+      if (s.tolerance) {
+        const tolHit = part.specs.some((spec) => spec.label.toLowerCase().includes('tolerance') && includesLoose(spec.value, s.tolerance!))
+        if (!tolHit) return false
+      }
+      if (s.location) {
+        const locText = `${part.location ?? ''} ${part.source.name}`
+        if (!includesLoose(locText, s.location)) return false
+      }
+
+      // Numeric ranges with units
+      if (!checkRangeMatch(part.specs, ['diameter', 'bore', 'rod', 'inner diameter', 'outer diameter', 'id', 'od'], s.diameter)) return false
+      if (!checkRangeMatch(part.specs, ['length', 'oal'], s.length)) return false
+      if (!checkRangeMatch(part.specs, ['width'], s.width)) return false
+      if (!checkRangeMatch(part.specs, ['height', 'thickness'], s.height)) return false
+      if (!checkRangeMatch(part.specs, ['weight', 'mass'], s.weight)) return false
+      if (!checkRangeMatch(part.specs, ['pressure'], s.pressure)) return false
+      if (!checkRangeMatch(part.specs, ['temperature'], s.temperature)) return false
+      if (!checkRangeMatch(part.specs, ['voltage'], s.voltage)) return false
+      if (!checkRangeMatch(part.specs, ['current'], s.current)) return false
+      if (!checkRangeMatch(part.specs, ['power'], s.power)) return false
+      if (!checkRangeMatch(part.specs, ['flow'], s.flowRate)) return false
+      if (!checkRangeMatch(part.specs, ['speed', 'rpm'], s.speed)) return false
+
+      if (s.price && ((s.price.min !== undefined && s.price.min !== '') || (s.price.max !== undefined && s.price.max !== ''))) {
+        if (!part.price) return false
+        const minP = s.price.min !== undefined && s.price.min !== '' ? Number(s.price.min) : -Infinity
+        const maxP = s.price.max !== undefined && s.price.max !== '' ? Number(s.price.max) : Infinity
+        if (part.price.amount < minP || part.price.amount > maxP) return false
+      }
+    }
+
     return true
   })
 }

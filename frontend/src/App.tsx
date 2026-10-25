@@ -1,5 +1,10 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
+
+function RedirectToFind() {
+  const location = useLocation()
+  return <Navigate to={{ pathname: '/find', search: location.search }} replace />
+}
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { AuthProvider } from '@/context/AuthContext'
 import { CompareProvider } from '@/context/CompareContext'
@@ -28,6 +33,9 @@ export default function App() {
                   <Route index element={<OverviewPage />} />
                   <Route path="find" element={<FindPartsPage />} />
                   <Route path="find/:partId" element={<PartDetailPage />} />
+                  <Route path="specs" element={<RedirectToFind />} />
+                  <Route path="parts" element={<RedirectToFind />} />
+                  <Route path="parts/:partId" element={<RedirectToFind />} />
                   <Route path="compare" element={<ComparePartsPage />} />
                   <Route path="saved" element={<SavedPartsPage />} />
                   <Route path="history" element={<SearchHistoryPage />} />

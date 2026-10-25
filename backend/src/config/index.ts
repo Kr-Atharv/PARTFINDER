@@ -22,6 +22,9 @@ const envSchema = z.object({
   TINYFISH_FETCH_ENDPOINT: z.string().default("https://api.fetch.tinyfish.ai"),
   TINYFISH_TIMEOUT_MS: z.string().optional().transform((v) => (v ? Number(v) : 10000)),
   TINYFISH_MAX_RETRIES: z.string().optional().transform((v) => (v ? Number(v) : 2)),
+  OCR_API_KEY: z.string().default("helloworld"),
+  OCR_API_ENDPOINT: z.string().default("https://api.ocr.space/parse/image"),
+  OCR_PROVIDER: z.enum(["auto", "external", "heuristic"]).default("auto"),
 });
 
 const parsed = envSchema.parse({

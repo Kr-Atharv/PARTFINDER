@@ -62,6 +62,8 @@ export function toPart(raw: any): Part {
     price: raw.price ?? undefined,
     evidenceLevel: raw.evidenceLevel ?? undefined,
     conflictingSpecs: raw.conflictingSpecs ?? undefined,
+    verificationTier: raw.verificationTier ?? undefined,
+    location: asString(raw.location),
   }
 }
 

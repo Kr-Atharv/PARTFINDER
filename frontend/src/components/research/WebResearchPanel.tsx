@@ -50,6 +50,7 @@ interface WebResearchPanelProps {
   domain?: string
   manufacturer?: string
   model?: string
+  autoStartKey?: number
 }
 
 type RunState =
@@ -91,13 +92,13 @@ const STAGE_TEXT: Record<Stage['status'], string> = {
   error: 'failed',
 }
 
-export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer = '', model = '' }: WebResearchPanelProps) {
+export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer = '', model = '', autoStartKey }: WebResearchPanelProps) {
   const { notify } = useToast()
   const [query, setQuery] = useState(initialQuery)
   const [queryTouched, setQueryTouched] = useState(false)
   const [selectedDomain, setSelectedDomain] = useState<DomainId | ''>(isDomainId(domain) ? domain : '')
   const [domainTouched, setDomainTouched] = useState(false)
-  const [maxResults, setMaxResults] = useState(3)
+  const [maxResults, setMaxResults] = useState(5)
   const [persist, setPersist] = useState(true)
   const [errors, setErrors] = useState<{ query?: string; domain?: string }>({})
 
@@ -106,20 +107,33 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
   const [results, setResults] = useState<Part[]>([])
   const [elapsed, setElapsed] = useState(0)
   const [lastRun, setLastRun] = useState<{ params: ResearchParams; persist: boolean } | null>(null)
+  const [completeMeta, setCompleteMeta] = useState<{ fewerMatchesReason?: string; targetMet?: boolean } | null>(null)
 
   const [sort, setSort] = useState<ResearchSort>('relevance')
   const [filters, setFilters] = useState<ResearchFilters>(emptyResearchFilters)
+  const [tierFilter, setTierFilter] = useState<string>('')
   const [page, setPage] = useState(1)
 
   const controllerRef = useRef<AbortController | null>(null)
   const startedAt = useRef(0)
 
-  // Follow the search form above until the person edits these fields here.
+  // Follow the search form above or OCR/datasheet auto-fills
   useEffect(() => {
-    if (!queryTouched) setQuery(initialQuery)
+    if (initialQuery && initialQuery.trim()) {
+      setQuery(initialQuery)
+      setQueryTouched(false)
+    } else if (!queryTouched) {
+      setQuery(initialQuery)
+    }
   }, [initialQuery, queryTouched])
+
   useEffect(() => {
-    if (!domainTouched) setSelectedDomain(isDomainId(domain) ? domain : '')
+    if (domain && isDomainId(domain)) {
+      setSelectedDomain(domain)
+      setDomainTouched(false)
+    } else if (!domainTouched) {
+      setSelectedDomain(isDomainId(domain) ? domain : '')
+    }
   }, [domain, domainTouched])
 
   // Cancel any running research when the page is left.
@@ -142,8 +156,10 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
       setElapsed(0)
       setEvents([])
       setResults([])
+      setCompleteMeta(null)
       setPage(1)
       setFilters(emptyResearchFilters)
+      setTierFilter('')
       setSort('relevance')
       setLastRun({ params, persist: persistFlag })
       setRun({ status: 'running' })
@@ -151,7 +167,15 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
       try {
         const parts = await streamResearch(params, {
           signal: controller.signal,
-          onEvent: (event) => setEvents((prev) => [...prev, event]),
+          onEvent: (event) => {
+            setEvents((prev) => [...prev, event])
+            if (event.type === 'complete') {
+              setCompleteMeta({
+                fewerMatchesReason: event.data.fewerMatchesReason,
+                targetMet: event.data.targetMet,
+              })
+            }
+          },
         })
         setElapsed(Date.now() - startedAt.current)
         setResults(parts)
@@ -166,7 +190,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
         })
         notify(
           parts.length > 0
-            ? { tone: 'success', title: `Found ${parts.length} supplier ${parts.length === 1 ? 'record' : 'records'}` }
+            ? { tone: 'success', title: `Found ${parts.length} verified supplier ${parts.length === 1 ? 'record' : 'records'}` }
             : { tone: 'warning', title: 'No parts could be extracted', description: 'See the page log below for why pages were skipped.' },
         )
       } catch (error) {
@@ -182,6 +206,29 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
     },
     [notify],
   )
+
+  const lastAutoStartKey = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (autoStartKey !== undefined && autoStartKey > 0 && autoStartKey !== lastAutoStartKey.current) {
+      lastAutoStartKey.current = autoStartKey
+      const targetQuery = (initialQuery || query).trim()
+      if (targetQuery.length >= 2) {
+        const dom = (selectedDomain || (domain && isDomainId(domain) ? domain : '') || 'industrial') as DomainId
+        setSelectedDomain(dom)
+        void execute(
+          {
+            query: targetQuery,
+            domain: dom,
+            manufacturer: manufacturer.trim() || undefined,
+            model: model.trim() || undefined,
+            maxResults,
+            persistToDb: persist,
+          },
+          persist,
+        )
+      }
+    }
+  }, [autoStartKey, initialQuery, query, selectedDomain, domain, manufacturer, model, maxResults, persist, execute])
 
   const start = () => {
     const trimmed = query.trim()
@@ -212,11 +259,18 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
   )
 
   const currencies = useMemo(() => currenciesOf(results), [results])
-  const visible = useMemo(() => sortResearch(filterResearch(results, filters), sort), [results, filters, sort])
+  const visible = useMemo(() => {
+    let list = filterResearch(results, filters)
+    if (tierFilter) {
+      list = list.filter((p) => p.verificationTier === tierFilter)
+    }
+    return sortResearch(list, sort)
+  }, [results, filters, sort, tierFilter])
+
   const totalPages = Math.max(1, Math.ceil(visible.length / RESEARCH_PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pageItems = visible.slice((safePage - 1) * RESEARCH_PAGE_SIZE, safePage * RESEARCH_PAGE_SIZE)
-  const filtersActive = JSON.stringify(filters) !== JSON.stringify(emptyResearchFilters)
+  const filtersActive = JSON.stringify(filters) !== JSON.stringify(emptyResearchFilters) || Boolean(tierFilter)
   const needsCurrency = currencies.length > 1 && hasPriceBounds(filters) && !filters.currency
   const showProgress = run.status !== 'idle'
 
@@ -230,12 +284,12 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
           <Sparkles className="h-5 w-5 text-accent-700" aria-hidden="true" />
-          <h2 className="text-base font-semibold text-ink-900">Live supplier research</h2>
-          <Badge tone="info">Live web (TinyFish)</Badge>
+          <h2 className="text-base font-semibold text-ink-900">Live Supplier &amp; Technical Discovery</h2>
+          <Badge tone="info">Live Web (TinyFish Multi-Source)</Badge>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-ink-600">
-          Searches the web for supplier and datasheet pages and reads specifications, availability and listed prices from the page
-          text. Values are extracted automatically and shown with the text they came from; they are not manually verified.
+          Discovers genuine parts across official manufacturer websites and authorized industrial distributors (Mouser, DigiKey, McMaster-Carr, Grainger, etc.).
+          Retrieves at least 5 matching products whenever available, with real technical specifications, source page URLs, supplier names, and verified pricing.
         </p>
 
         <form
@@ -249,13 +303,13 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
         >
           <div className="grid gap-4 md:grid-cols-[2fr_1fr_auto]">
             <Input
-              label="Part number or description"
+              label="Part number, model or specifications"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
                 setQueryTouched(true)
               }}
-              placeholder="e.g. SKF 6205 bearing datasheet"
+              placeholder="e.g. SKF 6205 bearing 25mm bore or D1VW hydraulic valve"
               error={errors.query}
               maxLength={120}
               autoComplete="off"
@@ -274,16 +328,22 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
               {errors.domain && <p className="mt-1.5 text-xs font-medium text-red-700">{errors.domain}</p>}
             </div>
             <Select
-              label="Max pages"
+              label="Target results"
               value={String(maxResults)}
               onChange={(e) => setMaxResults(Number(e.target.value))}
-              options={Array.from({ length: 10 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+              options={[
+                { value: '5', label: 'At least 5 results (Standard)' },
+                { value: '8', label: '8 results' },
+                { value: '10', label: '10 results' },
+                { value: '15', label: '15 results' },
+                { value: '20', label: '20 results' },
+              ]}
             />
           </div>
 
           {(manufacturer.trim() || model.trim()) && (
             <p className="text-xs text-ink-500">
-              Also using from the search form:{' '}
+              Also querying with:{' '}
               {manufacturer.trim() && <Badge>Manufacturer: {manufacturer.trim()}</Badge>}{' '}
               {model.trim() && <Badge>Model: {model.trim()}</Badge>}
             </p>
@@ -297,8 +357,8 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
                 onChange={(e) => setPersist(e.target.checked)}
                 className="h-4 w-4 rounded border-line-strong text-brand-600"
               />
-              Save results to the catalogue
-              <Tooltip content="When on, each record found is stored in the shared catalogue database so it appears in later catalogue searches. Turn it off to look without saving anything.">
+              Save results to catalogue database
+              <Tooltip content="When on, each verified record found is stored in the catalogue database so it appears in subsequent catalogue searches.">
                 <span tabIndex={0} aria-label="What does saving do?" className="text-ink-400">
                   <Info className="h-4 w-4" aria-hidden="true" />
                 </span>
@@ -311,7 +371,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
               </Button>
             ) : (
               <Button type="submit" icon={<Globe className="h-4 w-4" aria-hidden="true" />}>
-                Research suppliers
+                Research Verified Suppliers
               </Button>
             )}
             {showProgress && <span className="font-mono text-sm text-ink-600" aria-label="Elapsed time">{formatElapsed(elapsed)}</span>}
@@ -321,7 +381,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
 
       {showProgress && (
         <Card aria-label="Research progress">
-          <h3 className="text-sm font-semibold text-ink-900">Progress</h3>
+          <h3 className="text-sm font-semibold text-ink-900">Research &amp; Verification Progress</h3>
           <ol className="mt-3 space-y-2" role="list">
             {progress.stages.map((stage) => (
               <li key={stage.id} className="flex items-start gap-2.5 text-sm">
@@ -418,7 +478,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
         <EmptyState
           icon={FileSearch}
           title="No parts could be extracted"
-          description="The pages found did not contain recognisable specifications. Try a manufacturer name or an exact part number, or raise the number of pages."
+          description="The pages found did not contain recognisable specifications. Try a manufacturer name or an exact part number, or adjust the query."
           action={
             <Button variant="secondary" onClick={retry} icon={<RotateCcw className="h-4 w-4" aria-hidden="true" />}>
               Search again
@@ -429,9 +489,28 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
 
       {run.status === 'done' && results.length > 0 && (
         <section aria-label="Research results" className="space-y-4">
+          {/* Note if fewer than 5 results are found */}
+          {results.length < 5 && (
+            <Alert tone="info" title="Genuine search results notice">
+              {completeMeta?.fewerMatchesReason ||
+                `Only ${results.length} genuine matching ${results.length === 1 ? 'product was' : 'products were'} found across verified manufacturer and authorized distributor websites for this exact specification.`}
+            </Alert>
+          )}
+
           <Card>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <Select label="Sort by" value={sort} options={SORT_OPTIONS} onChange={(e) => { setSort(e.target.value as ResearchSort); setPage(1) }} />
+              <Select
+                label="Authenticity Tier"
+                value={tierFilter}
+                onChange={(e) => { setTierFilter(e.target.value); setPage(1) }}
+                options={[
+                  { value: '', label: 'All verified sources' },
+                  { value: 'official_manufacturer', label: 'Official Manufacturers' },
+                  { value: 'authorized_distributor', label: 'Authorized Distributors' },
+                  { value: 'verified_supplier', label: 'Verified Suppliers' },
+                ]}
+              />
               <Select
                 label="Availability"
                 value={filters.availability}
@@ -474,7 +553,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
                 Only parts with a listed price
               </label>
               {filtersActive && (
-                <Button variant="ghost" size="sm" onClick={() => { setFilters(emptyResearchFilters); setPage(1) }}>
+                <Button variant="ghost" size="sm" onClick={() => { setFilters(emptyResearchFilters); setTierFilter(''); setPage(1) }}>
                   Clear filters
                 </Button>
               )}
@@ -485,7 +564,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
               </p>
             )}
             <p className="mt-2 text-xs text-ink-500">
-              Prices are shown exactly as printed on each source page. They are not verified, converted or guaranteed current.
+              Prices are shown exactly as printed on each verified source page. They are not estimated or converted.
             </p>
           </Card>
 
@@ -501,7 +580,7 @@ export function WebResearchPanel({ initialQuery = '', domain = '', manufacturer 
               title="No results match these filters"
               description="Your research found parts, but none match the current filters."
               action={
-                <Button variant="secondary" onClick={() => { setFilters(emptyResearchFilters); setPage(1) }}>
+                <Button variant="secondary" onClick={() => { setFilters(emptyResearchFilters); setTierFilter(''); setPage(1) }}>
                   Clear filters
                 </Button>
               }

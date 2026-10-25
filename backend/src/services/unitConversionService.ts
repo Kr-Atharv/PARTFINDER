@@ -7,7 +7,9 @@ export type PhysicalDimension =
   | "speed"
   | "voltage"
   | "current"
-  | "force";
+  | "force"
+  | "power"
+  | "flow";
 
 export interface CanonicalQuantity {
   canonicalValue: number;
@@ -190,6 +192,52 @@ const UNIT_MAP: Record<string, UnitDefinition> = {
     canonicalUnit: "N",
     toCanonical: (v) => v * 4.4482216153,
     fromCanonical: (v) => v / 4.4482216153,
+  },
+
+  // Power (Canonical: W)
+  w: {
+    dimension: "power",
+    canonicalUnit: "W",
+    toCanonical: (v) => v,
+    fromCanonical: (v) => v,
+  },
+  kw: {
+    dimension: "power",
+    canonicalUnit: "W",
+    toCanonical: (v) => v * 1000,
+    fromCanonical: (v) => v / 1000,
+  },
+  hp: {
+    dimension: "power",
+    canonicalUnit: "W",
+    toCanonical: (v) => v * 745.699872,
+    fromCanonical: (v) => v / 745.699872,
+  },
+
+  // Flow (Canonical: L/min)
+  "l/min": {
+    dimension: "flow",
+    canonicalUnit: "L/min",
+    toCanonical: (v) => v,
+    fromCanonical: (v) => v,
+  },
+  gpm: {
+    dimension: "flow",
+    canonicalUnit: "L/min",
+    toCanonical: (v) => v * 3.785411784,
+    fromCanonical: (v) => v / 3.785411784,
+  },
+  "m3/h": {
+    dimension: "flow",
+    canonicalUnit: "L/min",
+    toCanonical: (v) => (v * 1000) / 60,
+    fromCanonical: (v) => (v * 60) / 1000,
+  },
+  "m³/h": {
+    dimension: "flow",
+    canonicalUnit: "L/min",
+    toCanonical: (v) => (v * 1000) / 60,
+    fromCanonical: (v) => (v * 60) / 1000,
   },
 };
 

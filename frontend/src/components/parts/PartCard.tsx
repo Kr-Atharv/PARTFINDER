@@ -1,8 +1,8 @@
-import { ArrowRight, Bookmark, BookmarkCheck, Eye, ExternalLink } from 'lucide-react'
+import { ArrowRight, Bookmark, BookmarkCheck, Eye, ExternalLink, MapPin } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
+import { AuthenticityBadge } from '@/components/parts/AuthenticityBadge'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Tooltip } from '@/components/ui/Tooltip'
 import { useToast } from '@/context/ToastContext'
 import { usePartDrawer } from '@/context/PartDrawerContext'
 import { domainById } from '@/data/domains'
@@ -44,8 +44,17 @@ export function PartCard({ part }: { part: Part }) {
             <Badge tone="brand">{domain.label}</Badge>
             {part.category && <Badge>{part.category}</Badge>}
             <AvailabilityBadge availability={part.availability} />
+            {part.verificationTier && (
+              <AuthenticityBadge tier={part.verificationTier} supplierName={part.source.name} />
+            )}
+            {part.location && (
+              <Badge tone="neutral" className="inline-flex items-center gap-1 text-xs">
+                <MapPin className="h-3 w-3 text-ink-500" aria-hidden="true" />
+                {part.location}
+              </Badge>
+            )}
             {part.isDemo && <Badge tone="warning">Demo data</Badge>}
-            {part.origin === 'research' && <Badge tone="info">Live research</Badge>}
+            {part.origin === 'research' && !part.verificationTier && <Badge tone="info">Live research</Badge>}
             {part.evidenceLevel === 'snippet_only' && <Badge tone="warning">Snippet only</Badge>}
           </div>
 
@@ -61,8 +70,8 @@ export function PartCard({ part }: { part: Part }) {
             {part.price && (
               <>
                 <span aria-hidden="true"> · </span>
-                <span className="font-mono text-ink-700">{formatPrice(part.price)}</span>
-                <span className="text-xs"> (as listed)</span>
+                <span className="font-mono text-ink-700 font-semibold">{formatPrice(part.price)}</span>
+                <span className="text-xs"> (verified price)</span>
               </>
             )}
           </p>
@@ -76,18 +85,18 @@ export function PartCard({ part }: { part: Part }) {
           </div>
 
           <p className="mt-4 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-500">
-            <span>Source:</span>
+            <span>Supplier / Source:</span>
             <span className="font-medium text-ink-700">{part.source.name}</span>
             {sourceUrl && (
               <a
                 href={sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 break-all text-brand-700 hover:underline"
+                className="inline-flex items-center gap-1 break-all text-brand-700 hover:underline font-medium"
               >
                 {displayUrl(sourceUrl)}
                 <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="sr-only">(opens in a new tab)</span>
+                <span className="sr-only">(opens verified supplier product page in a new tab)</span>
               </a>
             )}
           </p>
@@ -99,31 +108,30 @@ export function PartCard({ part }: { part: Part }) {
             size="sm"
             icon={<Eye className="h-4 w-4" aria-hidden="true" />}
             onClick={() => drawer.open(part)}
-            aria-label={`Quick view ${part.name}`}
           >
             Quick view
           </Button>
+
           <Button
+            variant="secondary"
+            size="sm"
+            icon={saved ? <BookmarkCheck className="h-4 w-4 text-brand-600" aria-hidden="true" /> : <Bookmark className="h-4 w-4" aria-hidden="true" />}
+            onClick={onSave}
+            aria-pressed={saved}
+          >
+            {saved ? 'Saved' : 'Save part'}
+          </Button>
+
+          <CompareButton part={part} size="sm" />
+
+          <Link
             to={detailPath}
             state={{ from }}
-            variant="ghost"
-            size="sm"
-            iconRight={<ArrowRight className="h-4 w-4" aria-hidden="true" />}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-surface-hover hover:text-ink-900"
           >
-            View details
-          </Button>
-          <CompareButton part={part} />
-          <Tooltip content={saved ? 'Remove from saved parts' : 'Save this part on this device'}>
-            <Button
-              variant={saved ? 'selected' : 'ghost'}
-              size="sm"
-              onClick={onSave}
-              aria-pressed={saved}
-              icon={saved ? <BookmarkCheck className="h-4 w-4" aria-hidden="true" /> : <Bookmark className="h-4 w-4" aria-hidden="true" />}
-            >
-              {saved ? 'Saved' : 'Save'}
-            </Button>
-          </Tooltip>
+            Full details
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
         </div>
       </div>
     </article>

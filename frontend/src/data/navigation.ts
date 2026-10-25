@@ -12,7 +12,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', title: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/find', label: 'Find Parts', title: 'Find Parts', icon: PackageSearch },
+  { to: '/find', label: 'Find Parts', title: 'Find Parts', icon: PackageSearch, end: true },
   { to: '/compare', label: 'Compare Parts', title: 'Compare Parts', icon: GitCompareArrows },
   { to: '/saved', label: 'Saved Parts', title: 'Saved Parts', icon: Bookmark },
   { to: '/history', label: 'Search History', title: 'Search History', icon: History },

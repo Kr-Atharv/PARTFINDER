@@ -1,6 +1,6 @@
 import { isDomainId } from '@/data/domains'
-import { DEFAULT_PAGE_SIZE, PAGE_SIZES, emptyRefinements } from '@/lib/search'
-import type { Availability, SearchCriteria, SearchErrors, SearchPaging, SearchRefinements, SortKey } from '@/types'
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES, emptyRefinements, hasRefinements } from '@/lib/search'
+import type { Availability, NumericRangeSpec, SearchCriteria, SearchErrors, SearchPaging, SearchRefinements, SortKey } from '@/types'
 
 export const MAX_QUERY_LENGTH = 100
 export const MAX_FIELD_LENGTH = 60
@@ -56,12 +56,83 @@ const SORT_VALUES: SortKey[] = ['name-asc', 'name-desc', 'manufacturer-asc', 'ma
 
 export function paramsToRefinements(params: URLSearchParams): SearchRefinements {
   const availability = params.get('avail') as Availability | null
-  return {
+  const base: SearchRefinements = {
     category: (params.get('cat') ?? '').slice(0, MAX_FIELD_LENGTH),
     availability: availability && AVAILABILITY_VALUES.includes(availability) ? availability : '',
     specLabel: (params.get('spec') ?? '').slice(0, MAX_FIELD_LENGTH),
     specValue: (params.get('specv') ?? '').slice(0, MAX_FIELD_LENGTH),
   }
+
+  const getRange = (prefix: string) => {
+    const rawMin = params.get(`${prefix}Min`) ?? undefined
+    const rawMax = params.get(`${prefix}Max`) ?? undefined
+    const unit = params.get(`${prefix}Unit`) ?? undefined
+    if (rawMin !== undefined || rawMax !== undefined || unit !== undefined) {
+      const min = rawMin !== undefined && rawMin.trim() !== '' && !Number.isNaN(Number(rawMin)) ? Number(rawMin) : rawMin
+      const max = rawMax !== undefined && rawMax.trim() !== '' && !Number.isNaN(Number(rawMax)) ? Number(rawMax) : rawMax
+      return { min, max, unit }
+    }
+    return undefined
+  }
+
+  const detailedMfr = params.get('specMfr') ?? undefined
+  const detailedPn = params.get('specPn') ?? undefined
+  const detailedMat = params.get('specMat') ?? undefined
+  const detailedThread = params.get('specThread') ?? undefined
+  const detailedPort = params.get('specPort') ?? undefined
+  const detailedTol = params.get('specTol') ?? undefined
+  const detailedModel = params.get('specModel') ?? undefined
+  const detailedLoc = params.get('specLoc') ?? undefined
+
+  const diameter = getRange('dia')
+  const length = getRange('len')
+  const width = getRange('wid')
+  const height = getRange('hgt')
+  const weight = getRange('wt')
+  const pressure = getRange('press')
+  const temperature = getRange('temp')
+  const voltage = getRange('volt')
+  const current = getRange('curr')
+  const power = getRange('pwr')
+  const flowRate = getRange('flow')
+  const speed = getRange('rpm')
+  const price = getRange('price')
+
+  const hasAnyDetailed = Boolean(
+    detailedMfr || detailedPn || detailedMat || detailedThread || detailedPort ||
+    detailedTol || detailedModel || detailedLoc ||
+    diameter || length || width || height || weight ||
+    pressure || temperature || voltage || current || power ||
+    flowRate || speed || price,
+  )
+
+  if (hasAnyDetailed) {
+    base.specs = {
+      manufacturer: detailedMfr,
+      partNumber: detailedPn,
+      material: detailedMat,
+      threadSize: detailedThread,
+      portSize: detailedPort,
+      tolerance: detailedTol,
+      compatibleModel: detailedModel,
+      location: detailedLoc,
+      diameter,
+      length,
+      width,
+      height,
+      weight,
+      pressure,
+      temperature,
+      voltage,
+      current,
+      power,
+      flowRate,
+      speed,
+      price,
+    }
+  }
+
+  return base
 }
 
 export function paramsToPaging(params: URLSearchParams): SearchPaging {
@@ -84,10 +155,7 @@ export function hasBrowseIntent(params: URLSearchParams): boolean {
       draft.domain ||
       draft.manufacturer.trim() ||
       draft.model.trim() ||
-      r.category ||
-      r.availability ||
-      r.specLabel ||
-      r.specValue,
+      hasRefinements(r),
   )
 }
 
@@ -114,6 +182,41 @@ export function buildSearchParams(
   if (refinements.availability) params.set('avail', refinements.availability)
   if (refinements.specLabel) params.set('spec', refinements.specLabel)
   if (refinements.specValue) params.set('specv', refinements.specValue)
+
+  // Serialize detailed specs if present
+  if (refinements.specs) {
+    const s = refinements.specs
+    if (s.manufacturer) params.set('specMfr', s.manufacturer)
+    if (s.partNumber) params.set('specPn', s.partNumber)
+    if (s.material) params.set('specMat', s.material)
+    if (s.threadSize) params.set('specThread', s.threadSize)
+    if (s.portSize) params.set('specPort', s.portSize)
+    if (s.tolerance) params.set('specTol', s.tolerance)
+    if (s.compatibleModel) params.set('specModel', s.compatibleModel)
+    if (s.location) params.set('specLoc', s.location)
+
+    const setRange = (prefix: string, range?: NumericRangeSpec) => {
+      if (!range) return
+      if (range.min !== undefined && range.min !== '') params.set(`${prefix}Min`, String(range.min))
+      if (range.max !== undefined && range.max !== '') params.set(`${prefix}Max`, String(range.max))
+      if (range.unit) params.set(`${prefix}Unit`, range.unit)
+    }
+
+    setRange('dia', s.diameter)
+    setRange('len', s.length)
+    setRange('wid', s.width)
+    setRange('hgt', s.height)
+    setRange('wt', s.weight)
+    setRange('press', s.pressure)
+    setRange('temp', s.temperature)
+    setRange('volt', s.voltage)
+    setRange('curr', s.current)
+    setRange('pwr', s.power)
+    setRange('flow', s.flowRate)
+    setRange('rpm', s.speed)
+    setRange('price', s.price)
+  }
+
   if (paging.sort && paging.sort !== 'name-asc') params.set('sort', paging.sort)
   if (paging.pageSize && paging.pageSize !== DEFAULT_PAGE_SIZE) params.set('size', String(paging.pageSize))
   if (paging.page && paging.page > 1) params.set('page', String(paging.page))

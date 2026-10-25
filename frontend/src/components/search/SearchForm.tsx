@@ -1,4 +1,4 @@
-import { RotateCcw, Search } from 'lucide-react'
+import { Camera, FileText, RotateCcw, Search, SlidersHorizontal } from 'lucide-react'
 import { useId } from 'react'
 import type { FormEvent } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -18,11 +18,28 @@ interface SearchFormProps {
   /** Called with the criteria to run when a suggestion was picked (the form state may not have updated yet). */
   onSubmit: (override?: SearchCriteria) => void
   onReset: () => void
+  /** Scroll to or open the specification filter panel */
+  onOpenSpecs?: () => void
+  /** Open camera or photo scanner modal */
+  onOpenScanner?: () => void
+  /** Open PDF datasheet parser modal */
+  onOpenDatasheet?: () => void
   /** Real manufacturer names from the catalogue, offered as completions. Omitted when unavailable. */
   manufacturerOptions?: string[]
 }
 
-export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset, manufacturerOptions }: SearchFormProps) {
+export function SearchForm({
+  value,
+  errors,
+  loading,
+  onChange,
+  onSubmit,
+  onReset,
+  onOpenSpecs,
+  onOpenScanner,
+  onOpenDatasheet,
+  manufacturerOptions,
+}: SearchFormProps) {
   const listId = useId()
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault() // Enter in any field submits the form.
@@ -128,6 +145,36 @@ export function SearchForm({ value, errors, loading, onChange, onSubmit, onReset
           >
             Reset
           </Button>
+          {onOpenSpecs && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onOpenSpecs}
+              icon={<SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}
+            >
+              Filter by Specifications
+            </Button>
+          )}
+          {onOpenScanner && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onOpenScanner}
+              icon={<Camera className="h-4 w-4" aria-hidden="true" />}
+            >
+              Scan Nameplate / Camera
+            </Button>
+          )}
+          {onOpenDatasheet && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onOpenDatasheet}
+              icon={<FileText className="h-4 w-4" aria-hidden="true" />}
+            >
+              Upload PDF Datasheet
+            </Button>
+          )}
         </div>
       </form>
     </Card>

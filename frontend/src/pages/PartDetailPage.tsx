@@ -1,8 +1,10 @@
-import { ArrowLeft, ExternalLink, PackageSearch } from 'lucide-react'
+import { ArrowLeft, ExternalLink, MapPin, PackageSearch } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
+import { AuthenticityBadge } from '@/components/parts/AuthenticityBadge'
 import { AvailabilityBadge } from '@/components/parts/AvailabilityBadge'
 import { CompareButton } from '@/components/parts/CompareButton'
+import { CrossReferenceSection } from '@/components/parts/CrossReferenceSection'
 import { SaveButton } from '@/components/parts/SaveButton'
 import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
@@ -133,9 +135,19 @@ export default function PartDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="brand">{domain.label}</Badge>
-            <Badge>{part.category}</Badge>
+            {part.category && <Badge>{part.category}</Badge>}
             <AvailabilityBadge availability={part.availability} />
+            {part.verificationTier && (
+              <AuthenticityBadge tier={part.verificationTier} supplierName={part.source.name} />
+            )}
+            {part.location && (
+              <Badge tone="neutral" className="inline-flex items-center gap-1 text-xs">
+                <MapPin className="h-3 w-3 text-ink-500" aria-hidden="true" />
+                {part.location}
+              </Badge>
+            )}
             {part.isDemo && <Badge tone="warning">Demo data</Badge>}
+            {part.origin === 'research' && !part.verificationTier && <Badge tone="info">Live research</Badge>}
           </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight text-ink-900">{part.name}</h1>
           <p className="mt-1 text-sm text-ink-500">
@@ -206,6 +218,14 @@ export default function PartDetailPage() {
                 <li className="text-sm text-ink-500">No applications listed.</li>
               )}
             </ul>
+          </Card>
+
+          <Card>
+            <CrossReferenceSection
+              partNumber={part.partNumber}
+              manufacturer={part.manufacturer}
+              currentPart={part}
+            />
           </Card>
         </div>
 

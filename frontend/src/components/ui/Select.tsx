@@ -10,11 +10,12 @@ export interface SelectOption {
 
 interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'> {
   label: string
+  hideLabel?: boolean
   options: SelectOption[]
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { label, options, className, id, ...rest },
+  { label, hideLabel = false, options, className, id, ...rest },
   ref,
 ) {
   const autoId = useId()
@@ -22,7 +23,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
 
   return (
     <div className={className}>
-      <label htmlFor={selectId} className="mb-1.5 block text-sm font-medium text-ink-800">
+      <label htmlFor={selectId} className={cn('block text-sm font-medium text-ink-800', hideLabel ? 'sr-only' : 'mb-1.5')}>
         {label}
       </label>
       <div className="relative">

@@ -7,7 +7,7 @@ export const researchSearchRequestSchema = z.object({
   domain: domainEnum,
   manufacturer: z.string().optional(),
   model: z.string().optional(),
-  maxResults: z.coerce.number().int().min(1).max(10).optional().default(5),
+  maxResults: z.coerce.number().int().min(1).max(25).optional().default(5),
   persistToDb: z.boolean().optional().default(false),
 });
 
@@ -32,12 +32,26 @@ export interface ListedPrice {
   sourceUrl: string;
 }
 
+export type VerificationTier =
+  | "official_manufacturer"
+  | "authorized_distributor"
+  | "verified_supplier"
+  | "unverified";
+
 export type ResearchProgressEvent =
   | { type: "started"; query: string; searchQuery: string; maxResults: number }
   | {
+      type: "search_attempt";
+      attempt: number;
+      query: string;
+      focus?: string;
+    }
+  | {
       type: "search_done";
       count: number;
-      results: Array<{ url: string; title: string; siteName?: string }>;
+      results: Array<{ url: string; title: string; siteName?: string; tier?: VerificationTier }>;
+      totalFound?: number;
+      explanation?: string;
     }
   | { type: "fetch_done"; fetched: number; failed: Array<{ url: string; error: string }> }
   | {
@@ -48,6 +62,8 @@ export type ResearchProgressEvent =
       partId?: string;
       specCount?: number;
       evidenceLevel?: "full_page" | "snippet_only";
+      verificationTier?: VerificationTier;
+      supplierName?: string;
     }
   | { type: "persisted"; count: number };
 
@@ -91,4 +107,8 @@ export interface ResearchedPartRecord {
     label: string;
     claims: Array<{ value: string; sourceUrl: string }>;
   }>;
+  /** Authenticity classification based on source domain verification */
+  verificationTier?: VerificationTier;
+  /** Verified location or warehouse dispatch info */
+  location?: string;
 }

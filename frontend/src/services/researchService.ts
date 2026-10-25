@@ -40,12 +40,23 @@ export interface ResearchedPart {
   price?: PartPrice
   evidenceLevel?: 'full_page' | 'snippet_only'
   conflictingSpecs?: ConflictingSpec[]
+  verificationTier?: 'official_manufacturer' | 'authorized_distributor' | 'verified_supplier' | 'unverified'
+  location?: string
 }
 
 /** Events the backend emits (see ResearchProgressEvent in the backend schemas). */
 export type ResearchEvent =
   | { type: 'started'; query: string; searchQuery: string; maxResults: number }
-  | { type: 'search_done'; count: number; results: Array<{ url: string; title: string; siteName?: string }> }
+  | {
+      type: 'search_done'
+      count: number
+      results: Array<{
+        url: string
+        title: string
+        siteName?: string
+        tier?: 'official_manufacturer' | 'authorized_distributor' | 'verified_supplier' | 'unverified'
+      }>
+    }
   | { type: 'fetch_done'; fetched: number; failed: Array<{ url: string; error: string }> }
   | {
       type: 'page_processed'
@@ -55,9 +66,21 @@ export type ResearchEvent =
       partId?: string
       specCount?: number
       evidenceLevel?: 'full_page' | 'snippet_only'
+      verificationTier?: 'official_manufacturer' | 'authorized_distributor' | 'verified_supplier' | 'unverified'
+      supplierName?: string
     }
   | { type: 'persisted'; count: number }
-  | { type: 'complete'; data: { query: string; domain: string; totalResearched: number; results: ResearchedPart[] } }
+  | {
+      type: 'complete'
+      data: {
+        query: string
+        domain: string
+        totalResearched: number
+        results: ResearchedPart[]
+        targetMet?: boolean
+        fewerMatchesReason?: string
+      }
+    }
   | { type: 'error'; error: { message: string; code: string; status: number } }
 
 export interface ResearchParams {
@@ -102,6 +125,8 @@ export function researchedToPart(raw: ResearchedPart): Part {
     price: raw.price,
     evidenceLevel: raw.evidenceLevel,
     conflictingSpecs: raw.conflictingSpecs,
+    verificationTier: raw.verificationTier,
+    location: raw.location,
   }
 }
 

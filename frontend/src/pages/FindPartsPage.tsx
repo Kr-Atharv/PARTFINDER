@@ -1,10 +1,16 @@
-import { Database, Globe, Library, Search } from 'lucide-react'
+import { ArrowLeftRight, Database, Globe, Library, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { DatasheetUploader } from '@/components/datasheet/DatasheetUploader'
+import { CrossReferenceSection } from '@/components/parts/CrossReferenceSection'
+import { PartImageScanner } from '@/components/vision/PartImageScanner'
 import { WebResearchPanel } from '@/components/research/WebResearchPanel'
 import { FilterPanel } from '@/components/search/FilterPanel'
 import { ResultsPanel } from '@/components/search/ResultsPanel'
 import { SearchForm } from '@/components/search/SearchForm'
+import { Card } from '@/components/ui/Card'
+import type { DatasheetParseResult } from '@/services/datasheetService'
+import type { VisionOcrResult } from '@/services/visionService'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -37,7 +43,7 @@ type SearchState =
   | { status: 'success'; page: SearchPage }
   | { status: 'error'; error: ReturnType<typeof describeError> }
 
-type Tab = 'catalogue' | 'research'
+type Tab = 'catalogue' | 'research' | 'crossref'
 
 const EXAMPLE_SEARCHES: Array<SearchCriteria & { domain: DomainId }> = [
   { query: 'hydraulic seal kit', domain: 'industrial', manufacturer: '', model: '' },
@@ -59,15 +65,19 @@ export default function FindPartsPage() {
   const refinements = useMemo(() => paramsToRefinements(sp), [sp])
   const paging = useMemo(() => paramsToPaging(sp), [sp])
   const browse = Boolean(sp.get('browse'))
-  const tab: Tab = sp.get('tab') === 'research' ? 'research' : 'catalogue'
+  const tab: Tab = sp.get('tab') === 'research' ? 'research' : sp.get('tab') === 'crossref' ? 'crossref' : 'catalogue'
 
   const [draft, setDraft] = useState<SearchCriteria>(urlDraft)
   const [errors, setErrors] = useState<SearchErrors>({})
   const [runId, setRunId] = useState(0)
+  const [researchAutoStartId, setResearchAutoStartId] = useState(0)
   const [state, setState] = useState<SearchState>({ status: 'idle' })
   const [facets, setFacets] = useState<Loaded<Facets> | null>(null)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [datasheetOpen, setDatasheetOpen] = useState(false)
   const recents = useRecentSearches()
   const resultsRef = useRef<HTMLDivElement>(null)
+  const filterSectionRef = useRef<HTMLDivElement>(null)
   // Set when the person submits a search, so it is recorded once with its real result count.
   const pendingRecord = useRef<SearchCriteria | null>(null)
 
@@ -115,6 +125,7 @@ export default function FindPartsPage() {
   const withTab = useCallback(
     (next: URLSearchParams, nextTab: Tab = tab) => {
       if (nextTab === 'research') next.set('tab', 'research')
+      else if (nextTab === 'crossref') next.set('tab', 'crossref')
       return next
     },
     [tab],
@@ -158,6 +169,7 @@ export default function FindPartsPage() {
   const setTab = (next: Tab) => {
     const copy = new URLSearchParams(paramKey)
     if (next === 'research') copy.set('tab', 'research')
+    else if (next === 'crossref') copy.set('tab', 'crossref')
     else copy.delete('tab')
     setParams(copy, { replace: true })
   }
@@ -175,6 +187,129 @@ export default function FindPartsPage() {
     setDraft(emptyCriteria)
     setErrors({})
     setParams(withTab(new URLSearchParams()))
+  }
+
+  const handleApplyVisionResult = (res: VisionOcrResult, searchMode: 'catalogue' | 'research' | 'fill_only') => {
+    const extractedQuery = res.extracted.partNumber || res.extracted.model || res.suggestedSearchQuery
+    const extractedMfr = res.extracted.manufacturer || draft.manufacturer
+    const nextCriteria: SearchCriteria = {
+      ...draft,
+      query: extractedQuery,
+      manufacturer: extractedMfr,
+      domain: draft.domain || 'industrial',
+    }
+    setDraft(nextCriteria)
+
+    const nextSpecs = { ...(refinements.specs || {}) }
+    if (extractedMfr) nextSpecs.manufacturer = extractedMfr
+    if (res.extracted.partNumber) nextSpecs.partNumber = res.extracted.partNumber
+
+    res.extracted.specs.forEach((s) => {
+      const lbl = s.label.toLowerCase()
+      if (lbl.includes('pressure') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.pressure = { min: num * 0.8, max: num * 1.2, unit: s.unit || 'bar' }
+      }
+      if (lbl.includes('voltage') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.voltage = { min: num, max: num, unit: s.unit || 'V' }
+      }
+      if (lbl.includes('power') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.power = { min: num, max: num, unit: s.unit || 'kW' }
+      }
+      if (lbl.includes('rpm') || lbl.includes('speed')) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.speed = { min: num * 0.9, max: num * 1.1, unit: 'RPM' }
+      }
+      if (lbl.includes('current') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.current = { min: num, max: num, unit: s.unit || 'A' }
+      }
+      if (lbl.includes('dimensions') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.diameter = { min: num, max: num, unit: 'mm' }
+      }
+    })
+
+    const nextRefinements: SearchRefinements = {
+      ...refinements,
+      specs: Object.keys(nextSpecs).length > 0 ? nextSpecs : refinements.specs,
+    }
+
+    if (searchMode === 'research') {
+      const p = buildSearchParams(nextCriteria, nextRefinements, { ...paging, page: 1 }, { browse: true })
+      p.set('tab', 'research')
+      setParams(p)
+      setResearchAutoStartId((n) => n + 1)
+    } else if (searchMode === 'fill_only') {
+      const p = buildSearchParams(nextCriteria, nextRefinements, { ...paging, page: 1 }, { browse: false })
+      setParams(p)
+    } else {
+      const p = buildSearchParams(nextCriteria, nextRefinements, { ...paging, page: 1 }, { browse: true })
+      p.delete('tab')
+      setParams(p)
+      setRunId((n) => n + 1)
+    }
+  }
+
+  const handleApplyDatasheetResult = (res: DatasheetParseResult, searchMode: 'search' | 'research') => {
+    const extractedQuery = res.detectedModelCode || res.suggestedSearchQuery
+    const extractedMfr = res.detectedManufacturer || draft.manufacturer
+    const nextCriteria: SearchCriteria = {
+      ...draft,
+      query: extractedQuery,
+      manufacturer: extractedMfr,
+      domain: draft.domain || 'industrial',
+    }
+    setDraft(nextCriteria)
+
+    const nextSpecs = { ...(refinements.specs || {}) }
+    if (extractedMfr) nextSpecs.manufacturer = extractedMfr
+    if (res.detectedModelCode) nextSpecs.partNumber = res.detectedModelCode
+
+    res.specs.forEach((s) => {
+      const lbl = s.label.toLowerCase()
+      if (lbl.includes('pressure') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.pressure = { min: num * 0.9, max: num * 1.1, unit: s.unit || 'bar' }
+      }
+      if (lbl.includes('flow') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.flowRate = { min: num * 0.9, max: num * 1.1, unit: s.unit || 'l/min' }
+      }
+      if (lbl.includes('voltage') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.voltage = { min: num, max: num, unit: s.unit || 'V' }
+      }
+      if (lbl.includes('power') && s.value) {
+        const num = parseFloat(s.value)
+        if (!isNaN(num)) nextSpecs.power = { min: num, max: num, unit: s.unit || 'kW' }
+      }
+      if (lbl.includes('seal') && s.value) {
+        nextSpecs.material = s.value
+      }
+      if (lbl.includes('port') && s.value) {
+        nextSpecs.portSize = s.value
+      }
+    })
+
+    const nextRefinements: SearchRefinements = {
+      ...refinements,
+      specs: Object.keys(nextSpecs).length > 0 ? nextSpecs : refinements.specs,
+    }
+
+    if (searchMode === 'research') {
+      const p = buildSearchParams(nextCriteria, nextRefinements, { ...paging, page: 1 }, { browse: true })
+      p.set('tab', 'research')
+      setParams(p)
+      setResearchAutoStartId((n) => n + 1)
+    } else {
+      const p = buildSearchParams(nextCriteria, nextRefinements, { ...paging, page: 1 }, { browse: true })
+      p.delete('tab')
+      setParams(p)
+      setRunId((n) => n + 1)
+    }
   }
 
   const loading = state.status === 'loading'
@@ -195,6 +330,9 @@ export default function FindPartsPage() {
         onChange={handleDraftChange}
         onSubmit={(override) => runSearch(override ?? draft)}
         onReset={handleReset}
+        onOpenSpecs={() => filterSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
+        onOpenScanner={() => setScannerOpen(true)}
+        onOpenDatasheet={() => setDatasheetOpen(true)}
         manufacturerOptions={manufacturerOptions}
       />
 
@@ -206,20 +344,27 @@ export default function FindPartsPage() {
         tabs={[
           { id: 'catalogue', label: (<><Library className="h-4 w-4" aria-hidden="true" />Catalogue{catalogueSize !== undefined && <span className="font-mono text-xs text-ink-500">{catalogueSize}</span>}</>) },
           { id: 'research', label: (<><Globe className="h-4 w-4" aria-hidden="true" />Live supplier research</>) },
+          { id: 'crossref', label: (<><ArrowLeftRight className="h-4 w-4" aria-hidden="true" />Cross-Reference &amp; Equivalents</>) },
         ]}
       />
 
       {/* Both panels stay mounted so a running research or its results survive switching tabs. */}
       <div role="tabpanel" id={panelId(ID_PREFIX, 'catalogue')} aria-labelledby={tabId(ID_PREFIX, 'catalogue')} hidden={tab !== 'catalogue'} className="space-y-6">
-        <FilterPanel
-          refinements={refinements}
-          paging={paging}
-          facets={facets}
-          onRefinements={setRefinements}
-          onSort={setSort}
-          onPageSize={setPageSize}
-          onClear={clearFilters}
-        />
+        <div ref={filterSectionRef} id="specs-filter-panel">
+          <FilterPanel
+            refinements={refinements}
+            paging={paging}
+            facets={facets}
+            onRefinements={setRefinements}
+            onSort={setSort}
+            onPageSize={setPageSize}
+            onClear={clearFilters}
+            onTransferToResearch={(specsQuery) => {
+              setDraft((prev) => ({ ...prev, query: specsQuery }))
+              setTab('research')
+            }}
+          />
+        </div>
 
         <div ref={resultsRef} tabIndex={-1} className="space-y-6 focus:outline-none">
           {state.status === 'idle' && (
@@ -251,6 +396,43 @@ export default function FindPartsPage() {
                     <Button variant="secondary" size="sm" icon={<Database className="h-4 w-4" aria-hidden="true" />} onClick={browseAll}>
                       Browse all parts
                     </Button>
+                  </div>
+
+                  <div className="flex flex-wrap justify-center items-center gap-1.5 pt-1 text-xs text-ink-500">
+                    <span className="font-medium text-ink-600">Explore by specification:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = normalizeCriteria({ query: '', domain: 'industrial', manufacturer: '', model: '' })
+                        setDraft(next)
+                        writeUrl(next, { ...refinements, category: 'Valves' }, { ...paging, page: 1 }, { browse: true })
+                      }}
+                      className="rounded border border-line bg-surface px-2 py-1 text-xs text-brand-700 hover:bg-brand-50 hover:border-brand-300"
+                    >
+                      Valves &amp; Pumps (Pressure &amp; Flow)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = normalizeCriteria({ query: '', domain: 'industrial', manufacturer: '', model: '' })
+                        setDraft(next)
+                        writeUrl(next, { ...refinements, category: 'Bearings' }, { ...paging, page: 1 }, { browse: true })
+                      }}
+                      className="rounded border border-line bg-surface px-2 py-1 text-xs text-brand-700 hover:bg-brand-50 hover:border-brand-300"
+                    >
+                      Bearings (Diameter &amp; RPM)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = normalizeCriteria({ query: '', domain: 'electronics', manufacturer: '', model: '' })
+                        setDraft(next)
+                        writeUrl(next, { ...refinements, category: 'Motor Drives' }, { ...paging, page: 1 }, { browse: true })
+                      }}
+                      className="rounded border border-line bg-surface px-2 py-1 text-xs text-brand-700 hover:bg-brand-50 hover:border-brand-300"
+                    >
+                      Drives &amp; Motors (Voltage &amp; Power)
+                    </button>
                   </div>
                   {recents.filter((r) => r.kind === 'catalogue').length > 0 && (
                     <div>
@@ -313,8 +495,88 @@ export default function FindPartsPage() {
       </div>
 
       <div role="tabpanel" id={panelId(ID_PREFIX, 'research')} aria-labelledby={tabId(ID_PREFIX, 'research')} hidden={tab !== 'research'}>
-        <WebResearchPanel initialQuery={draft.query} domain={draft.domain ?? undefined} manufacturer={draft.manufacturer} model={draft.model} />
+        <WebResearchPanel
+          initialQuery={draft.query}
+          domain={draft.domain ?? undefined}
+          manufacturer={draft.manufacturer}
+          model={draft.model}
+          autoStartKey={researchAutoStartId}
+        />
       </div>
+
+      <div role="tabpanel" id={panelId(ID_PREFIX, 'crossref')} aria-labelledby={tabId(ID_PREFIX, 'crossref')} hidden={tab !== 'crossref'}>
+        <Card className="p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-400">
+              <ArrowLeftRight className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="text-base font-semibold text-ink-900">Cross-Reference &amp; Obsolete Part Interchange Finder</h3>
+              <p className="text-xs text-ink-500">
+                Identify drop-in equivalents across manufacturers with Fit-Form-Function (FFF) compatibility scoring
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center bg-surface-subtle p-3 rounded-lg border border-line">
+            <input
+              type="text"
+              placeholder="Enter part or model number (e.g. 6205-2RS, D1VW001CNJW, 4WE6, LM7805, LF16015)"
+              value={draft.query}
+              onChange={(e) => setDraft((prev) => ({ ...prev, query: e.target.value }))}
+              className="flex-1 min-w-[280px] rounded-md border border-line bg-surface px-3 py-1.5 text-xs text-ink-900 font-mono"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<ArrowLeftRight className="h-4 w-4" />}
+              onClick={() => runSearch(draft)}
+            >
+              Lookup Equivalents
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 items-center text-xs text-ink-500">
+            <span className="font-medium text-ink-600">Quick Examples:</span>
+            {[
+              { label: 'Bearing 6205-2RS', code: '6205-2RS', mfr: 'SKF' },
+              { label: 'Valve D1VW', code: 'D1VW001CNJW', mfr: 'Parker' },
+              { label: 'Valve 4WE6', code: '4WE6D6X', mfr: 'Rexroth' },
+              { label: 'Regulator LM7805', code: 'LM7805', mfr: 'TI' },
+              { label: 'Filter LF16015', code: 'LF16015', mfr: 'Fleetguard' },
+            ].map((ex) => (
+              <button
+                key={ex.code}
+                type="button"
+                onClick={() => {
+                  setDraft((prev) => ({ ...prev, query: ex.code, manufacturer: ex.mfr }))
+                }}
+                className="rounded border border-line bg-surface px-2 py-0.5 text-xs text-brand-700 hover:bg-brand-50 hover:border-brand-300 font-mono"
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
+
+          <CrossReferenceSection
+            partNumber={draft.query || '6205-2RS'}
+            manufacturer={draft.manufacturer}
+          />
+        </Card>
+      </div>
+
+      <PartImageScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onApplyResult={handleApplyVisionResult}
+        onAutoFill={(res) => handleApplyVisionResult(res, 'fill_only')}
+      />
+
+      <DatasheetUploader
+        open={datasheetOpen}
+        onClose={() => setDatasheetOpen(false)}
+        onApplySpecs={handleApplyDatasheetResult}
+      />
     </div>
   )
 }

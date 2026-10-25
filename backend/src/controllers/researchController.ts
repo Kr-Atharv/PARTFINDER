@@ -7,13 +7,21 @@ export class ResearchController {
   static async search(req: Request, res: Response, next: NextFunction) {
     try {
       const body = req.body as ResearchSearchRequest;
+      const targetCount = Math.max(5, body.maxResults ?? 5);
       const records = await TinyFishService.conductResearch(body);
+
+      const fewerMatchesReason =
+        records.length < targetCount
+          ? `Found ${records.length} matching products. Fewer than ${targetCount} genuine matches were available across authorized distributors and manufacturer sources for this search.`
+          : undefined;
 
       return res.json({
         data: {
           query: body.query,
           domain: body.domain,
           totalResearched: records.length,
+          targetMet: records.length >= targetCount,
+          fewerMatchesReason,
           results: records,
           parts: records,
         },
@@ -25,13 +33,14 @@ export class ResearchController {
 
   /**
    * Same research pipeline as `search`, but streams real progress as newline-delimited JSON:
-   *   {"type":"started"|"search_done"|"fetch_done"|"page_processed"|"persisted", ...}
+   *   {"type":"started"|"search_attempt"|"search_done"|"fetch_done"|"page_processed"|"persisted", ...}
    *   {"type":"complete","data":{...same shape as /search...}}   or
    *   {"type":"error","error":{message,code,status}}
    * Every event reflects something the pipeline actually did; nothing is simulated.
    */
   static async stream(req: Request, res: Response) {
     const body = req.body as ResearchSearchRequest;
+    const targetCount = Math.max(5, body.maxResults ?? 5);
     let closed = false;
     res.on("close", () => {
       closed = true;
@@ -50,13 +59,21 @@ export class ResearchController {
 
     try {
       const records = await TinyFishService.conductResearch(body, (event: ResearchProgressEvent) => write(event));
+      const fewerMatchesReason =
+        records.length < targetCount
+          ? `Found ${records.length} matching products. Fewer than ${targetCount} genuine matches were available across authorized distributors and manufacturer sources for this search.`
+          : undefined;
+
       write({
         type: "complete",
         data: {
           query: body.query,
           domain: body.domain,
           totalResearched: records.length,
+          targetMet: records.length >= targetCount,
+          fewerMatchesReason,
           results: records,
+          parts: records,
         },
       });
     } catch (err: any) {
